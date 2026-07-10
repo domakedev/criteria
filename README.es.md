@@ -28,7 +28,15 @@ El motor nunca piensa. **Recupera y agrega** casos aportados por humanos,
 siempre con procedencia. Los pesos no se configuran: **emergen** de las
 decisiones que salieron bien.
 
-## Empieza aquí — la app
+## El MVP web — para todo el mundo
+
+En [`web/`](./web/README.md) vive la versión alojada: Next.js + Firebase,
+sesión con Google, una comunidad pública de casos de decisión más los tuyos
+privados, dictado por voz para registrar, y una lectura de IA opcional
+(Gemini) que sintetiza **solo** los casos humanos recuperados — nunca su
+propio juicio.
+
+## Empieza aquí — la app (local)
 
 Lo más simple: una app para escribir tus decisiones y aprender de ellas. Sin
 jerga, sin nube. Tus experiencias se guardan como archivos en tu máquina.

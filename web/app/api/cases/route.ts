@@ -5,6 +5,7 @@ import { trackRecord } from "@/lib/engine";
 import {
   createCase,
   firebaseAdminConfigured,
+  listOwnCommunityCases,
   listPersonalCases,
   verifyRequestUser,
 } from "@/lib/admin";
@@ -23,7 +24,15 @@ export async function GET(req: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: "Inicia sesión primero." }, { status: 401 });
   }
-  const cases = await listPersonalCases(user.uid);
+  // Privados + los que compartió a la comunidad: ambos son SUS decisiones y
+  // de ambos debe poder cerrar el ciclo.
+  const [personal, shared] = await Promise.all([
+    listPersonalCases(user.uid),
+    listOwnCommunityCases(user.uid),
+  ]);
+  const cases = [...personal, ...shared].sort((a, b) =>
+    a.createdAt < b.createdAt ? 1 : -1,
+  );
   return NextResponse.json({ cases, record: trackRecord(cases) });
 }
 

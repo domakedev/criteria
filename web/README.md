@@ -6,8 +6,13 @@ pasó de verdad, y consultas la experiencia real de la comunidad.
 
 - **Next.js** (App Router) — el motor de criterio corre en el servidor.
 - **Firebase** — sesión con Google (Auth) y datos en Firestore.
-- **Dictado por voz** — Web Speech API del navegador. Sin IA externa: el
-  reconocimiento es del sistema y solo sirve para *registrar*; nada decide por ti.
+- **Dictado por voz** — Web Speech API del navegador. El reconocimiento es del
+  sistema y solo sirve para *registrar*.
+- **Lectura de la IA (opcional)** — con `GEMINI_API_KEY`, Gemini lee los casos
+  humanos que el motor recuperó y redacta una recomendación basada SOLO en
+  ellos (prompt endurecido contra inyección: los casos entran como datos, los
+  ids citados se validan contra los casos reales, y sin respaldo suficiente la
+  IA debe decir "no alcanza"). La decisión final siempre es del humano.
 - El navegador nunca toca Firestore: todo pasa por `/api/*` con el Admin SDK
   y verificación del ID token.
 
@@ -22,6 +27,9 @@ pasó de verdad, y consultas la experiencia real de la comunidad.
    los valores al `.env.local` (ver abajo).
 6. Configuración del proyecto → **Cuentas de servicio** → *Generar nueva clave
    privada*. Pega el JSON (en una línea o en base64) en `FIREBASE_SERVICE_ACCOUNT`.
+7. (Opcional, para la "Lectura de la IA") crea una API key en
+   [aistudio.google.com/apikey](https://aistudio.google.com/apikey) y ponla en
+   `GEMINI_API_KEY`. Sin ella la app funciona igual, solo sin esa sección.
 
 ```bash
 cp .env.local.example .env.local   # y completa los valores

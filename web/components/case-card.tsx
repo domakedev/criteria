@@ -11,9 +11,12 @@ import {
 export function CaseCard({
   c,
   footer,
+  showLayer = false,
 }: {
   c: DecisionCase;
   footer?: React.ReactNode;
+  /** Muestra la insignia "Compartida" — útil en "Mis decisiones", redundante en Comunidad. */
+  showLayer?: boolean;
 }) {
   return (
     <article className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
@@ -26,6 +29,11 @@ export function CaseCard({
         >
           {OUTCOME_LABEL[c.outcome.status]}
         </span>
+        {showLayer && c.layer === "community" ? (
+          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-800">
+            Compartida
+          </span>
+        ) : null}
         <span className="ml-auto text-stone-400">
           {c.author} · {new Date(c.createdAt).toLocaleDateString("es-PE")}
         </span>

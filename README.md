@@ -28,7 +28,14 @@ The engine never thinks. It **retrieves and aggregates** cases humans
 contributed, always with provenance. Weights are not configured — they
 **emerge** from decisions that turned out well.
 
-## Start here — the app
+## The web MVP — for everyone
+
+A hosted version lives in [`web/`](./web/README.md): Next.js + Firebase, sign
+in with Google, a public community of decision cases plus your private ones,
+voice dictation to record, and an optional AI reading (Gemini) that
+synthesizes **only** the retrieved human cases — never its own judgment.
+
+## Start here — the app (local)
 
 The simplest way in: an app to write down your decisions and learn from them.
 No jargon, no cloud. Your experiences are saved as files on your machine.

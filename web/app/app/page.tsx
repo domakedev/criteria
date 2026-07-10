@@ -356,6 +356,7 @@ function MiasTab() {
               <CaseCard
                 key={c.id}
                 c={c}
+                showLayer
                 footer={
                   <div className="mt-3 border-t border-stone-100 pt-3">
                     {closing?.id === c.id ? (
@@ -415,7 +416,7 @@ function MiasTab() {
           <h2 className="mb-3 font-semibold text-stone-800">Con resultado</h2>
           <div className="space-y-3">
             {resolved.map((c) => (
-              <CaseCard key={c.id} c={c} />
+              <CaseCard key={c.id} c={c} showLayer />
             ))}
           </div>
         </section>

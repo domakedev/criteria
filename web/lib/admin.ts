@@ -84,6 +84,23 @@ export async function listPersonalCases(uid: string): Promise<DecisionCase[]> {
   return snap.docs.map((d) => caseFromDoc(d.data()));
 }
 
+/**
+ * Los casos comunitarios que ESTE usuario aportó: en "Mis decisiones" debe
+ * poder cerrar también el ciclo de lo que compartió. Sin orderBy en la query
+ * (where + orderBy sobre campos distintos exigiría un índice compuesto);
+ * se ordena en memoria.
+ */
+export async function listOwnCommunityCases(uid: string): Promise<DecisionCase[]> {
+  const snap = await db()
+    .collection("community")
+    .where("authorUid", "==", uid)
+    .limit(MAX_CASES)
+    .get();
+  return snap.docs
+    .map((d) => caseFromDoc(d.data()))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
 /** Guarda un caso nuevo. layer decide si va a la comunidad o a lo privado. */
 export async function createCase(
   uid: string,
