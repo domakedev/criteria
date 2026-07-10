@@ -8,9 +8,12 @@ import { topMatches } from "@/lib/engine";
 import {
   firebaseAdminConfigured,
   listCommunityCases,
+  listOwnCommunityCases,
   listPersonalCases,
   verifyRequestUser,
 } from "@/lib/admin";
+import { sanitizeScope } from "@/lib/validate";
+import type { DecisionCase } from "@/lib/types";
 
 // Límite simple en memoria: N análisis por usuario por ventana. Suficiente
 // para el MVP (una sola instancia); con más tráfico iría a Firestore/Redis.
@@ -49,7 +52,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { situation?: string; domain?: string };
+  let body: { situation?: string; domain?: string; scope?: string };
   try {
     body = await req.json();
   } catch {
@@ -60,11 +63,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Cuéntame la situación primero." }, { status: 400 });
   }
 
-  const [community, personal] = await Promise.all([
-    listCommunityCases(),
-    listPersonalCases(user.uid),
+  // Mismo alcance que /api/ask: la IA lee exactamente lo que el motor buscó.
+  const scope = sanitizeScope(body.scope);
+  const none = Promise.resolve<DecisionCase[]>([]);
+  const [community, personal, ownShared] = await Promise.all([
+    scope !== "mine" ? listCommunityCases() : none,
+    scope !== "community" ? listPersonalCases(user.uid) : none,
+    scope === "mine" ? listOwnCommunityCases(user.uid) : none,
   ]);
-  const matches = topMatches([...personal, ...community], {
+  const matches = topMatches([...personal, ...ownShared, ...community], {
     situation,
     ...(body.domain ? { domain: body.domain } : {}),
   });

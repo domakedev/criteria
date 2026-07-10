@@ -1,6 +1,7 @@
 // Lado servidor: Firebase Admin SDK. Aquí vive el acceso a Firestore — el
 // cliente nunca toca la base directamente (las reglas lo bloquean); todo pasa
 // por las rutas /api/* que verifican el ID token del usuario.
+import { createHash, randomBytes } from "node:crypto";
 import {
   cert,
   getApps,
@@ -159,4 +160,63 @@ export async function recordOutcome(
     return true;
   }
   return false;
+}
+
+// --- Tokens MCP ---
+// Un token personal (formato "crit_…") permite que una IA externa — Claude u
+// otro cliente MCP — use /api/mcp en nombre del usuario. Solo se guarda el
+// hash SHA-256: el token en claro se muestra UNA vez al crearlo.
+// apiTokens/{hash} → { uid, name, createdAt }   (búsqueda inversa al verificar)
+// users/{uid}.mcpToken → { hash, prefix, createdAt }   (estado para la UI)
+
+export interface McpTokenInfo {
+  /** Primeros caracteres, para que el usuario reconozca su token. */
+  prefix: string;
+  createdAt: string;
+}
+
+function tokenHash(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+export async function getMcpTokenInfo(uid: string): Promise<McpTokenInfo | null> {
+  const doc = await db().collection("users").doc(uid).get();
+  const t = doc.data()?.mcpToken;
+  return t?.hash ? { prefix: t.prefix ?? "crit_", createdAt: t.createdAt ?? "" } : null;
+}
+
+/** Crea (o rota) el token del usuario y devuelve el valor en claro — única vez. */
+export async function createMcpToken(uid: string, name: string): Promise<string> {
+  const plain = "crit_" + randomBytes(24).toString("base64url");
+  const hash = tokenHash(plain);
+  const prefix = plain.slice(0, 10) + "…";
+  const createdAt = new Date().toISOString();
+
+  const userRef = db().collection("users").doc(uid);
+  const prevHash = (await userRef.get()).data()?.mcpToken?.hash;
+
+  const batch = db().batch();
+  if (prevHash) batch.delete(db().collection("apiTokens").doc(prevHash));
+  batch.set(db().collection("apiTokens").doc(hash), { uid, name, createdAt });
+  batch.set(userRef, { mcpToken: { hash, prefix, createdAt } }, { merge: true });
+  await batch.commit();
+  return plain;
+}
+
+export async function revokeMcpToken(uid: string): Promise<void> {
+  const userRef = db().collection("users").doc(uid);
+  const hash = (await userRef.get()).data()?.mcpToken?.hash;
+  const batch = db().batch();
+  if (hash) batch.delete(db().collection("apiTokens").doc(hash));
+  batch.set(userRef, { mcpToken: null }, { merge: true });
+  await batch.commit();
+}
+
+/** Resuelve un token MCP a su usuario, o null si no existe/fue revocado. */
+export async function verifyMcpToken(token: string): Promise<AuthedUser | null> {
+  if (!token.startsWith("crit_") || token.length < 20) return null;
+  const doc = await db().collection("apiTokens").doc(tokenHash(token)).get();
+  if (!doc.exists) return null;
+  const data = doc.data()!;
+  return { uid: String(data.uid), name: typeof data.name === "string" ? data.name : "anónimo" };
 }
