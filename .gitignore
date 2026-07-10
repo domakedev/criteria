@@ -1,0 +1,17 @@
+# Dependencies / build
+node_modules/
+dist/
+
+# Personal criterion is PRIVATE by design (local-first).
+# Never publish it by accident.
+data/personal/*
+!data/personal/README.md
+
+# Generated artifacts
+criteria-graph.html
+data/.embeddings-cache.json
+
+# Misc
+*.log
+.DS_Store
+.claude/launch.json

@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://criteria.dev/spec/case.schema.json",
+  "title": "Decision Case",
+  "description": "The atomic unit of the criteria format: one real human decision, its lenses, weights, doubt, expectation and outcome.",
+  "type": "object",
+  "required": [
+    "id",
+    "situation",
+    "context",
+    "lenses",
+    "decision",
+    "reason",
+    "doubt",
+    "outcome",
+    "layer",
+    "author",
+    "createdAt"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^case-[a-z0-9-]+$",
+      "description": "Unique case id"
+    },
+    "situation": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The decision faced, in plain language"
+    },
+    "context": {
+      "type": "object",
+      "required": ["domain", "tags"],
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "description": "Knowledge community (kebab-case), e.g. software-development"
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Free tags for retrieval"
+        }
+      },
+      "additionalProperties": false
+    },
+    "lenses": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Points of view the human actually considered (outer layers only)",
+      "items": {
+        "type": "object",
+        "required": ["name", "weight", "reading"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "description": "Lens id (kebab-case), e.g. delivery-time"
+          },
+          "weight": {
+            "type": "string",
+            "enum": ["high", "medium", "low"],
+            "description": "Declared importance of this lens for THIS decision"
+          },
+          "reading": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What was observed through this lens"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "decision": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What was decided"
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Why it was decided"
+    },
+    "doubt": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Residual doubt after deciding"
+    },
+    "expectation": {
+      "type": "string",
+      "description": "What the human expected to happen (temporal data, optional)"
+    },
+    "outcome": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["pending", "good", "bad", "mixed"],
+          "description": "How the decision actually turned out"
+        },
+        "note": { "type": "string" },
+        "recordedAt": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "layer": {
+      "type": "string",
+      "enum": ["community", "personal"],
+      "description": "community = shared; personal = private, local-first"
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Who contributed this case (provenance)"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false
+}

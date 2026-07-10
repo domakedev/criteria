@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://criteria.dev/spec/graph.schema.json",
+  "title": "Criterion Graph",
+  "description": "Deterministic projection of Decision Cases into nodes and edges. See graph.md for the derivation rules.",
+  "type": "object",
+  "required": ["version", "derivedFrom", "nodes", "edges"],
+  "properties": {
+    "version": { "const": "0.1" },
+    "derivedFrom": {
+      "type": "object",
+      "required": ["domain", "cases", "generatedAt"],
+      "properties": {
+        "domain": { "type": ["string", "null"] },
+        "cases": { "type": "integer", "minimum": 0 },
+        "generatedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "label"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^(case|lens|tag):" },
+          "type": { "type": "string", "enum": ["case", "lens", "tag"] },
+          "label": { "type": "string" },
+          "outcome": { "type": "string", "enum": ["pending", "good", "bad", "mixed"] },
+          "layer": { "type": "string", "enum": ["community", "personal"] },
+          "salience": { "type": "number", "minimum": 0, "maximum": 1 },
+          "appearances": { "type": "integer", "minimum": 1 },
+          "description": { "type": "string" },
+          "case": { "$ref": "https://criteria.dev/spec/case.schema.json" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "target", "type"],
+        "properties": {
+          "source": { "type": "string" },
+          "target": { "type": "string" },
+          "type": { "type": "string", "enum": ["looked-through", "similar", "tagged"] },
+          "weight": { "type": "string", "enum": ["high", "medium", "low"] },
+          "score": { "type": "number" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

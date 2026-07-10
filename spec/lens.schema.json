@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://criteria.dev/spec/lens.schema.json",
+  "title": "Lens Catalog",
+  "description": "Catalog of known lenses (points of view) for a domain. Weights are NOT stored here — they emerge from accumulated cases and their outcomes.",
+  "type": "object",
+  "required": ["domain", "lenses"],
+  "properties": {
+    "domain": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "lenses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "description"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "description": "Lens id (kebab-case)"
+          },
+          "description": {
+            "type": "string",
+            "description": "What this point of view looks at"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,17 @@
+rules_version = '2';
+
+// Reglas de seguridad de criteria.
+// Publicar desde Firebase Console → Firestore → Reglas
+// (o `firebase deploy --only firestore:rules`).
+//
+// TODO el acceso a datos pasa por las rutas /api/* de Next, que usan el
+// Firebase Admin SDK (ignora estas reglas) y verifican el ID token del
+// usuario. El navegador NUNCA toca Firestore directo, así que aquí se
+// bloquea todo el acceso de clientes.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
