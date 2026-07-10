@@ -42,6 +42,14 @@ export const OUTCOME_STYLE: Record<OutcomeStatus, string> = {
   mixed: "bg-amber-100 text-amber-800",
 };
 
+/** Color del punto de estado en las tarjetas — más liviano que un chip lleno. */
+export const OUTCOME_DOT: Record<OutcomeStatus, string> = {
+  pending: "bg-stone-300",
+  good: "bg-emerald-500",
+  bad: "bg-red-500",
+  mixed: "bg-amber-500",
+};
+
 export const CONFIDENCE_LABEL: Record<Confidence, string> = {
   none: "Sin experiencias aún",
   low: "Pocas experiencias",

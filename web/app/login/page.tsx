@@ -76,14 +76,14 @@ export default function LoginPage() {
   };
 
   const field =
-    "w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-sm focus:border-emerald-600 focus:outline-none";
+    "w-full rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm shadow-sm transition-colors focus:border-emerald-500 focus:outline-none";
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4 py-10">
       <div className="mb-6 flex justify-center">
         <Logo />
       </div>
-      <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+      <div className="rounded-2xl border border-stone-200/70 bg-white p-6 shadow-sm">
         <h1 className="text-center text-xl font-semibold">
           {mode === "signup" ? "Crear cuenta" : "Entrar"}
         </h1>
@@ -102,7 +102,7 @@ export default function LoginPage() {
             <button
               onClick={enterGoogle}
               disabled={busy !== null}
-              className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-stone-300 bg-white px-4 py-2.5 font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50"
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2.5 font-medium shadow-sm text-stone-800 hover:bg-stone-50 disabled:opacity-50"
             >
               <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden>
                 <path
@@ -175,7 +175,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={busy !== null}
-                className="w-full rounded-lg bg-emerald-700 px-4 py-2.5 font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+                className="w-full rounded-xl bg-emerald-700 px-4 py-2.5 font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
               >
                 {busy === "email"
                   ? "Un momento…"

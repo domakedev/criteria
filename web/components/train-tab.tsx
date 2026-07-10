@@ -159,7 +159,7 @@ export function TrainTab({ onDone }: { onDone: () => void }) {
     return (
       <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         El entrenamiento necesita la IA configurada (<code>GEMINI_API_KEY</code>).
-        Mientras tanto puedes anotar decisiones reales en la pestaña{" "}
+        Mientras tanto puedes anotar decisiones reales con el botón{" "}
         <strong>Anotar</strong>.
       </p>
     );
@@ -168,7 +168,7 @@ export function TrainTab({ onDone }: { onDone: () => void }) {
   // --- Pantalla final ---
   if (scenarios && idx >= scenarios.length) {
     return (
-      <div className="animate-rise rounded-2xl border border-stone-200 bg-white p-8 text-center shadow-sm">
+      <div className="animate-rise rounded-2xl border border-stone-200/70 bg-white p-8 text-center shadow-sm">
         <span className="mx-auto inline-flex rounded-full bg-emerald-100 p-3 text-emerald-700">
           <CheckIcon className="h-7 w-7" />
         </span>
@@ -187,7 +187,7 @@ export function TrainTab({ onDone }: { onDone: () => void }) {
               setTopic("");
               resetAnswer();
             }}
-            className="rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-800"
+            className="rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-800"
           >
             Entrenar otro tema
           </button>
@@ -247,7 +247,7 @@ export function TrainTab({ onDone }: { onDone: () => void }) {
           />
         </div>
 
-        <div className="animate-rise rounded-2xl border border-stone-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="animate-rise rounded-2xl border border-stone-200/70 bg-white p-5 shadow-sm sm:p-6">
           <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">
             {domainLabel(sc.domain)}
           </span>
@@ -414,7 +414,7 @@ export function TrainTab({ onDone }: { onDone: () => void }) {
             <button
               onClick={save}
               disabled={saving || selected === null}
-              className="rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-800 disabled:opacity-50"
+              className="rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-800 disabled:opacity-50"
             >
               {saving ? "Guardando…" : "Guardar y seguir"}
             </button>
@@ -439,19 +439,18 @@ export function TrainTab({ onDone }: { onDone: () => void }) {
   // --- Pantalla inicial: elegir tema ---
   return (
     <div className="animate-fade space-y-5">
-      <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm sm:p-6">
-        <h2 className="flex items-center gap-2 text-base font-semibold text-stone-900">
-          <TargetIcon className="h-5 w-5 text-emerald-700" />
+      <div>
+        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-stone-900">
           Entrena tu criterio
-        </h2>
-        <p className="mt-2 text-sm leading-relaxed text-stone-600">
-          Escribe un tema y la IA genera <strong>escenarios de decisión</strong>{" "}
-          con opciones listas para marcar. Lo que respondas se guarda como{" "}
-          <strong>tu</strong> criterio — privado o compartido con la comunidad —
-          para que la app tenga de dónde responder cuando tú (u otros) pregunten.
+        </h1>
+        <p className="mt-1 text-stone-500">
+          Elige un tema y responde escenarios rápidos. Tus respuestas se
+          guardan como tu criterio.
         </p>
+      </div>
+      <div className="rounded-2xl border border-stone-200/70 bg-white p-5 shadow-sm sm:p-6">
 
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <input
             className={field}
             value={topic}
@@ -468,7 +467,7 @@ export function TrainTab({ onDone }: { onDone: () => void }) {
           <button
             onClick={() => generate()}
             disabled={generating || topic.trim().length < 2 || aiOn === null}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-800 disabled:opacity-50"
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-800 disabled:opacity-50"
           >
             <SparklesIcon className="h-4 w-4" />
             {generating ? "Generando escenarios…" : "Generar escenarios"}
@@ -490,9 +489,8 @@ export function TrainTab({ onDone }: { onDone: () => void }) {
 
         {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
         <p className="mt-4 text-xs text-stone-400">
-          La IA solo propone las situaciones. Cada respuesta guardada lleva tu
-          decisión, tu porqué y tu duda — criterio 100 % humano, etiquetado con
-          el tema para encontrarlo después.
+          La IA solo propone las situaciones — lo que respondes es criterio
+          100 % humano, tuyo.
         </p>
       </div>
     </div>

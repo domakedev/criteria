@@ -1,15 +1,13 @@
-// Landing pública. La comunidad se ve sin cuenta — el criterio compartido es
-// de todos. Se renderiza en el servidor con el Admin SDK.
+// Landing pública, corta y directa: una promesa, cómo funciona en tres pasos
+// y la comunidad real como prueba. Se renderiza en el servidor con el Admin SDK.
 import Link from "next/link";
 import { CaseCard } from "@/components/case-card";
 import { Logo } from "@/components/logo";
 import {
-  BoltIcon,
   EyeOffIcon,
   MicIcon,
-  SearchIcon,
   SparklesIcon,
-  TargetIcon,
+  UsersIcon,
 } from "@/components/icons";
 import { firebaseAdminConfigured, listCommunityCases } from "@/lib/admin";
 import type { DecisionCase } from "@/lib/types";
@@ -18,50 +16,26 @@ export const dynamic = "force-dynamic";
 
 const FEATURES = [
   {
-    Icon: SparklesIcon,
-    title: "Cuéntalo y listo",
-    body: "Escribe o dicta tu decisión como te salga. La IA la ordena en segundos — tú solo revisas y guardas. Nada de formularios pesados.",
-  },
-  {
     Icon: MicIcon,
-    title: "Con tu voz",
-    body: "Dictado integrado en cada campo. Anota una decisión mientras caminas, sin teclear una letra.",
-  },
-  {
-    Icon: TargetIcon,
-    title: "Entrena tu criterio",
-    body: "Escribe un tema — React, emprender, crianza — y la IA genera escenarios con opciones listas para marcar. Tus respuestas se guardan como tu criterio.",
-  },
-  {
-    Icon: SearchIcon,
-    title: "Respuestas con respaldo",
-    body: "Pregunta y elige dónde buscar: tus decisiones, la comunidad o ambas. Y si aún no hay experiencias, la IA aconseja con el método criteria — siempre etiquetado.",
+    title: "Cuéntala y listo",
+    body: "Escribe o dicta tu decisión como te salga. La IA la ordena — tú solo revisas y guardas.",
   },
   {
     Icon: EyeOffIcon,
-    title: "Con tu nombre o en anónimo",
-    body: "Cada decisión es privada por defecto. Si la compartes, tú eliges: con tu nombre o como “anónimo”. Tu correo nunca se muestra.",
+    title: "Privada por defecto",
+    body: "Nadie ve tus decisiones. Si compartes una, eliges: con tu nombre o en anónimo.",
   },
   {
-    Icon: BoltIcon,
-    title: "Tu IA, conectada (MCP)",
-    body: "Servidor MCP integrado: Claude u otra IA compatible consulta tu criterio antes de aconsejarte y guarda decisiones por ti desde el chat.",
+    Icon: UsersIcon,
+    title: "Respuestas con respaldo",
+    body: "Lo que te muestra salió de experiencias reales, con su procedencia. Nada es inventado.",
   },
 ];
 
 const STEPS = [
-  {
-    title: "Anota",
-    body: "Qué enfrentaste, qué decidiste y por qué. Lo cuentas con tus palabras — texto o voz — y la IA lo deja ordenado.",
-  },
-  {
-    title: "Cierra el ciclo",
-    body: "Cuando sepas cómo salió, cuéntalo. Así tu criterio gana peso con hechos, no con opiniones.",
-  },
-  {
-    title: "Consulta",
-    body: "Ante una decisión nueva, mira qué pesó y qué funcionó en experiencias reales — solo tuyas, de la comunidad o ambas.",
-  },
+  { title: "Anota", body: "Qué enfrentaste, qué decidiste y por qué." },
+  { title: "Cierra el ciclo", body: "Cuando sepas cómo salió, cuéntalo." },
+  { title: "Consulta", body: "Ante una decisión nueva, mira qué funcionó de verdad." },
 ];
 
 export default async function Landing() {
@@ -69,112 +43,96 @@ export default async function Landing() {
   let community: DecisionCase[] = [];
   if (configured) {
     try {
-      community = await listCommunityCases(12);
+      community = await listCommunityCases(6);
     } catch {
       // sin conexión a Firestore: la landing sigue funcionando
     }
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-4 pb-16">
+    <main className="mx-auto max-w-2xl px-4 pb-16">
       <header className="flex items-center justify-between py-5">
         <Logo />
-        <nav className="flex items-center gap-4">
-          <a
-            href="#comunidad"
-            className="hidden text-sm font-medium text-stone-600 hover:text-emerald-800 sm:inline"
-          >
-            Comunidad
-          </a>
-          <Link
-            href="/login"
-            className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-800"
-          >
-            Entrar
-          </Link>
-        </nav>
+        <Link
+          href="/login"
+          className="rounded-full bg-emerald-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-800"
+        >
+          Entrar
+        </Link>
       </header>
 
-      <section className="animate-rise py-14 text-center sm:py-20">
-        <p className="mx-auto mb-5 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-xs font-medium text-emerald-900">
+      <section className="animate-rise py-12 text-center sm:py-16">
+        <p className="mx-auto mb-5 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 py-1.5 text-xs font-medium text-emerald-900 ring-1 ring-emerald-100">
           <SparklesIcon className="h-3.5 w-3.5" />
-          Experiencia humana real · la IA solo ordena, nunca decide
+          La IA solo ordena — nunca decide por ti
         </p>
-        <h1 className="mx-auto max-w-2xl text-4xl font-bold tracking-tight text-stone-900 sm:text-5xl">
+        <h1 className="mx-auto max-w-xl text-4xl font-bold tracking-tight text-stone-900 sm:text-5xl">
           Decide con experiencia real,{" "}
           <span className="text-emerald-700">no con humo</span>.
         </h1>
-        <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-stone-600">
-          Cuenta tus decisiones con tu voz o por escrito — la IA las ordena por
-          ti. Registra cómo salieron y consulta lo que a personas reales les
-          funcionó de verdad. <strong className="text-stone-800">Aquí nadie decide por ti.</strong>
+        <p className="mx-auto mt-5 max-w-md text-lg leading-relaxed text-stone-600">
+          Anota tus decisiones, registra cómo salieron y consulta lo que a
+          personas reales les funcionó de verdad.
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Link
             href="/login"
-            className="rounded-xl bg-emerald-700 px-6 py-3 font-medium text-white shadow-sm transition-colors hover:bg-emerald-800"
+            className="rounded-full bg-emerald-700 px-6 py-3 font-medium text-white shadow-sm transition-colors hover:bg-emerald-800"
           >
             Empezar gratis
           </Link>
           <a
             href="#comunidad"
-            className="rounded-xl border border-stone-300 bg-white px-6 py-3 font-medium text-stone-700 transition-colors hover:border-emerald-600 hover:text-emerald-800"
+            className="rounded-full px-4 py-3 font-medium text-stone-500 transition-colors hover:text-emerald-800"
           >
-            Ver experiencias
+            Ver experiencias →
           </a>
         </div>
-        <p className="mt-5 text-xs text-stone-400">
-          Gratis · Formato abierto (MIT) · Tus decisiones privadas siguen privadas
-        </p>
       </section>
 
-      <section className="grid gap-4 py-8 sm:grid-cols-2">
+      <section className="py-6">
+        <ol className="grid gap-3 sm:grid-cols-3">
+          {STEPS.map((s, i) => (
+            <li
+              key={s.title}
+              className="flex items-start gap-3 rounded-2xl border border-stone-200/70 bg-white p-4 shadow-sm"
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-700 text-sm font-bold text-white">
+                {i + 1}
+              </span>
+              <span>
+                <span className="block font-semibold text-stone-900">{s.title}</span>
+                <span className="mt-0.5 block text-sm leading-relaxed text-stone-500">
+                  {s.body}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="grid gap-3 py-6 sm:grid-cols-3">
         {FEATURES.map(({ Icon, title, body }) => (
           <div
             key={title}
-            className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
+            className="rounded-2xl border border-stone-200/70 bg-white p-4 shadow-sm"
           >
-            <span className="inline-flex rounded-xl bg-emerald-100 p-2.5 text-emerald-800">
+            <span className="inline-flex rounded-full bg-emerald-50 p-2.5 text-emerald-700">
               <Icon className="h-5 w-5" />
             </span>
-            <h2 className="mt-3 font-semibold text-stone-900">{title}</h2>
-            <p className="mt-1.5 text-sm leading-relaxed text-stone-600">{body}</p>
+            <h2 className="mt-2.5 font-semibold text-stone-900">{title}</h2>
+            <p className="mt-1 text-sm leading-relaxed text-stone-500">{body}</p>
           </div>
         ))}
       </section>
 
-      <section className="py-10">
-        <h2 className="mb-6 text-center text-2xl font-bold text-stone-900">
-          Cómo funciona
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-3">
-          {STEPS.map((s, i) => (
-            <div
-              key={s.title}
-              className="rounded-2xl border border-stone-200 bg-white p-6"
-            >
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-700 text-sm font-bold text-white">
-                {i + 1}
-              </span>
-              <h3 className="mt-3 font-semibold text-emerald-900">{s.title}</h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-stone-600">{s.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="my-8 rounded-2xl bg-emerald-900 px-6 py-10 text-center sm:px-10">
-        <p className="mx-auto max-w-2xl text-lg leading-relaxed font-medium text-emerald-50 sm:text-xl">
-          “La IA solo ayuda a registrar y a leer lo que la gente vivió.
-          Nunca inventa, nunca opina por su cuenta, nunca reemplaza tu juicio.”
-        </p>
-        <p className="mt-3 text-sm text-emerald-300">— el manifiesto de criteria</p>
-      </section>
-
       <section id="comunidad" className="scroll-mt-6 py-8">
-        <h2 className="mb-4 text-xl font-bold text-stone-900">
+        <h2 className="mb-1 text-xl font-bold text-stone-900">
           Lo último de la comunidad
         </h2>
+        <p className="mb-4 text-sm text-stone-500">
+          Decisiones reales, compartidas con nombre o en anónimo.
+        </p>
         {!configured ? (
           <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             El servidor aún no está conectado a Firebase. Sigue los pasos de{" "}
@@ -194,13 +152,16 @@ export default async function Landing() {
         )}
       </section>
 
-      <section className="py-10 text-center">
-        <h2 className="text-2xl font-bold text-stone-900">
+      <section className="my-6 rounded-2xl bg-emerald-900 px-6 py-10 text-center">
+        <h2 className="text-2xl font-bold text-white">
           Tu criterio vale. Guárdalo.
         </h2>
+        <p className="mx-auto mt-2 max-w-sm text-sm text-emerald-200">
+          Gratis, formato abierto (MIT) y tus decisiones privadas siguen privadas.
+        </p>
         <Link
           href="/login"
-          className="mt-6 inline-block rounded-xl bg-emerald-700 px-6 py-3 font-medium text-white shadow-sm transition-colors hover:bg-emerald-800"
+          className="mt-6 inline-block rounded-full bg-white px-6 py-3 font-medium text-emerald-900 shadow-sm transition-colors hover:bg-emerald-50"
         >
           Crear mi cuenta gratis
         </Link>
