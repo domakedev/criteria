@@ -45,7 +45,7 @@ export default async function Landing() {
           href="/login"
           className="mt-8 inline-block rounded-xl bg-emerald-700 px-6 py-3 font-medium text-white shadow-sm hover:bg-emerald-800"
         >
-          Empezar gratis con Google
+          Empezar gratis
         </Link>
       </section>
 
