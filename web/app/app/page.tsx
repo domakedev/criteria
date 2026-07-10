@@ -21,7 +21,7 @@ import {
 } from "@/components/icons";
 import { api } from "@/lib/api";
 import { DOMAINS } from "@/lib/labels";
-import type { AiAnalysis } from "@/lib/ai";
+import type { AiAdvice, AiAnalysis } from "@/lib/ai";
 import type { McpTokenInfo } from "@/lib/admin";
 import type { DecisionCase, Guidance, TrackRecord } from "@/lib/types";
 
@@ -96,7 +96,7 @@ export default function AppPage() {
         </div>
       </nav>
 
-      {tab === "preguntar" ? <AskTab /> : null}
+      {tab === "preguntar" ? <AskTab onAnotar={() => setTab("anotar")} /> : null}
       {tab === "anotar" ? <AnotarTab onSaved={() => setTab("mias")} /> : null}
       {tab === "mias" ? <MiasTab onAnotar={() => setTab("anotar")} /> : null}
       {tab === "comunidad" ? <ComunidadTab onAnotar={() => setTab("anotar")} /> : null}
@@ -135,7 +135,7 @@ const SCOPES: Array<{ id: Scope; label: string }> = [
   { id: "community", label: "Solo la comunidad" },
 ];
 
-function AskTab() {
+function AskTab({ onAnotar }: { onAnotar: () => void }) {
   const [situation, setSituation] = useState("");
   const [domain, setDomain] = useState("");
   const [scope, setScope] = useState<Scope>("all");
@@ -143,6 +143,7 @@ function AskTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [analysis, setAnalysis] = useState<AiAnalysis | null>(null);
+  const [advice, setAdvice] = useState<AiAdvice | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
@@ -151,26 +152,35 @@ function AskTab() {
     setLoading(true);
     setGuidance(null);
     setAnalysis(null);
+    setAdvice(null);
     try {
       const body = { situation, scope, ...(domain ? { domain } : {}) };
       const g = await api<Guidance>("/api/ask", { method: "POST", body });
       setGuidance(g);
       // Con casos encontrados, la IA los lee y redacta su recomendación.
-      // Si falla o no está configurada, la respuesta del motor ya está en
-      // pantalla — el análisis es un extra, nunca un bloqueo.
-      if (g.matchedCases.length > 0) {
-        setAnalyzing(true);
-        try {
+      // Sin casos (arranque en frío), la IA aconseja con el método criteria
+      // en vez de dejar al usuario con las manos vacías. Si la IA falla o no
+      // está configurada, la respuesta del motor ya está en pantalla — es un
+      // extra, nunca un bloqueo.
+      setAnalyzing(true);
+      try {
+        if (g.matchedCases.length > 0) {
           const { analysis: a } = await api<{ analysis: AiAnalysis | null }>(
             "/api/analyze",
             { method: "POST", body },
           );
           setAnalysis(a);
-        } catch {
-          // silencioso: la guía humana ya se muestra
-        } finally {
-          setAnalyzing(false);
+        } else {
+          const { advice: c } = await api<{ advice: AiAdvice | null }>(
+            "/api/advise",
+            { method: "POST", body: { situation } },
+          );
+          setAdvice(c);
         }
+      } catch {
+        // silencioso: la guía humana ya se muestra
+      } finally {
+        setAnalyzing(false);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Algo salió mal.");
@@ -261,11 +271,97 @@ function AskTab() {
 
       {analyzing ? (
         <div className="animate-pulse rounded-2xl border border-violet-200 bg-violet-50 p-5 text-sm text-violet-700">
-          La IA está leyendo las experiencias encontradas…
+          {guidance && guidance.matchedCases.length === 0
+            ? "Aún no hay experiencias parecidas — la IA está preparando un consejo de criterio…"
+            : "La IA está leyendo las experiencias encontradas…"}
         </div>
       ) : null}
       {analysis ? <AnalysisCard a={analysis} /> : null}
+      {advice ? <AdviceCard a={advice} onAnotar={onAnotar} /> : null}
     </div>
+  );
+}
+
+/**
+ * Consejo de criterio de la IA para el arranque en frío: aplica el método
+ * criteria (lentes ponderados, preguntas, sesgos) y se etiqueta como consejo
+ * de IA — nunca se disfraza de experiencia humana.
+ */
+function AdviceCard({ a, onAnotar }: { a: AiAdvice; onAnotar: () => void }) {
+  return (
+    <section className="animate-rise rounded-2xl border border-violet-200 bg-violet-50 p-5">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-semibold text-violet-900">
+          Consejo de criterio de la IA
+        </h3>
+        <span className="rounded-full bg-violet-200 px-2 py-0.5 text-xs font-medium text-violet-800">
+          sin experiencias reales aún
+        </span>
+      </div>
+
+      {a.recommendation ? (
+        <p className="text-lg font-medium text-violet-950">{a.recommendation}</p>
+      ) : null}
+      {a.reasoning ? (
+        <p className="mt-2 text-sm text-violet-900">{a.reasoning}</p>
+      ) : null}
+
+      {a.lenses.length > 0 ? (
+        <div className="mt-4">
+          <h4 className="text-xs font-semibold tracking-wide text-violet-800 uppercase">
+            Qué conviene pesar
+          </h4>
+          <ul className="mt-2 space-y-2">
+            {a.lenses.map((l) => (
+              <li key={l.name} className="text-sm text-violet-950">
+                <span className="font-medium">{l.name.replace(/-/g, " ")}</span>
+                <span className="ml-1.5 rounded-full bg-violet-200 px-1.5 py-0.5 text-[11px] text-violet-800">
+                  {l.weight === "high" ? "pesa mucho" : l.weight === "medium" ? "pesa algo" : "pesa poco"}
+                </span>
+                <span className="block text-violet-900/80">{l.why}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {a.questions.length > 0 ? (
+        <div className="mt-4">
+          <h4 className="text-xs font-semibold tracking-wide text-violet-800 uppercase">
+            Respóndete antes de decidir
+          </h4>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-violet-950">
+            {a.questions.map((q, i) => (
+              <li key={i}>{q}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {a.risks.length > 0 ? (
+        <ul className="mt-4 space-y-1">
+          {a.risks.map((r, i) => (
+            <li key={i} className="text-sm text-red-800">
+              ⚠ {r}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="mt-4 border-t border-violet-200 pt-3">
+        <p className="text-xs text-violet-700">
+          Esto es consejo general de la IA con el método criteria — todavía
+          nadie registró una experiencia real parecida. La decisión es tuya, y
+          cuando la tomes puedes dejarla anotada para la próxima persona.
+        </p>
+        <button
+          onClick={onAnotar}
+          className="mt-2 rounded-xl bg-violet-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-violet-800"
+        >
+          Anotar mi decisión
+        </button>
+      </div>
+    </section>
   );
 }
 

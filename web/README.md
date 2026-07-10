@@ -19,6 +19,12 @@ de verdad, y consultas la experiencia real de la comunidad.
 - **Alcance al preguntar** — en "Preguntar" eliges buscar en **todo**, **solo
   tus decisiones** o **solo la comunidad** (`scope` en `/api/ask` y
   `/api/analyze`).
+- **Consejo de criterio en frío** — si el motor no encuentra experiencias
+  parecidas, la IA no deja al usuario con las manos vacías: aconseja aplicando
+  el método criteria (lentes ponderados, preguntas abiertas, sesgos a vigilar,
+  lenguaje de posibilidad) vía `/api/advise`, SIEMPRE etiquetado como consejo
+  de IA "sin experiencias reales aún" — nunca se disfraza de experiencia
+  humana — y con invitación a anotar la decisión para la próxima persona.
 - **Lectura de la IA (opcional)** — con `GEMINI_API_KEY`, Gemini lee los casos
   humanos que el motor recuperó y redacta una recomendación basada SOLO en
   ellos (prompt endurecido contra inyección: los casos entran como datos, los
