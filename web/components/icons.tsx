@@ -123,6 +123,16 @@ export function MicIcon(p: IconProps) {
   );
 }
 
+export function TargetIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1.2" />
+    </Svg>
+  );
+}
+
 export function ArrowLeftIcon(p: IconProps) {
   return (
     <Svg {...p}>
