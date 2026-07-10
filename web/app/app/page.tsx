@@ -10,6 +10,7 @@ import { CaseForm } from "@/components/case-form";
 import { GuidanceView } from "@/components/guidance-view";
 import { Logo } from "@/components/logo";
 import { MicButton } from "@/components/mic-button";
+import { TrainTab } from "@/components/train-tab";
 import {
   BoltIcon,
   CheckIcon,
@@ -17,6 +18,7 @@ import {
   CopyIcon,
   PenIcon,
   SearchIcon,
+  TargetIcon,
   UsersIcon,
 } from "@/components/icons";
 import { api } from "@/lib/api";
@@ -25,11 +27,12 @@ import type { AiAdvice, AiAnalysis } from "@/lib/ai";
 import type { McpTokenInfo } from "@/lib/admin";
 import type { DecisionCase, Guidance, TrackRecord } from "@/lib/types";
 
-type Tab = "preguntar" | "anotar" | "mias" | "comunidad" | "ia";
+type Tab = "preguntar" | "anotar" | "entrenar" | "mias" | "comunidad" | "ia";
 
 const TABS: Array<{ id: Tab; label: string; Icon: typeof SearchIcon }> = [
   { id: "preguntar", label: "Preguntar", Icon: SearchIcon },
   { id: "anotar", label: "Anotar", Icon: PenIcon },
+  { id: "entrenar", label: "Entrenar", Icon: TargetIcon },
   { id: "mias", label: "Mis decisiones", Icon: ClipboardIcon },
   { id: "comunidad", label: "Comunidad", Icon: UsersIcon },
   { id: "ia", label: "Conectar IA", Icon: BoltIcon },
@@ -98,6 +101,7 @@ export default function AppPage() {
 
       {tab === "preguntar" ? <AskTab onAnotar={() => setTab("anotar")} /> : null}
       {tab === "anotar" ? <AnotarTab onSaved={() => setTab("mias")} /> : null}
+      {tab === "entrenar" ? <TrainTab onDone={() => setTab("mias")} /> : null}
       {tab === "mias" ? <MiasTab onAnotar={() => setTab("anotar")} /> : null}
       {tab === "comunidad" ? <ComunidadTab onAnotar={() => setTab("anotar")} /> : null}
       {tab === "ia" ? <ConectarIaTab /> : null}

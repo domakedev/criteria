@@ -7,7 +7,9 @@ import {
   BoltIcon,
   EyeOffIcon,
   MicIcon,
+  SearchIcon,
   SparklesIcon,
+  TargetIcon,
 } from "@/components/icons";
 import { firebaseAdminConfigured, listCommunityCases } from "@/lib/admin";
 import type { DecisionCase } from "@/lib/types";
@@ -24,6 +26,16 @@ const FEATURES = [
     Icon: MicIcon,
     title: "Con tu voz",
     body: "Dictado integrado en cada campo. Anota una decisión mientras caminas, sin teclear una letra.",
+  },
+  {
+    Icon: TargetIcon,
+    title: "Entrena tu criterio",
+    body: "Escribe un tema — React, emprender, crianza — y la IA genera escenarios con opciones listas para marcar. Tus respuestas se guardan como tu criterio.",
+  },
+  {
+    Icon: SearchIcon,
+    title: "Respuestas con respaldo",
+    body: "Pregunta y elige dónde buscar: tus decisiones, la comunidad o ambas. Y si aún no hay experiencias, la IA aconseja con el método criteria — siempre etiquetado.",
   },
   {
     Icon: EyeOffIcon,
