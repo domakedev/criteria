@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "criteria — decide con experiencia real",
   description:
-    "Anota tus decisiones, cierra el ciclo con lo que pasó de verdad y consulta la experiencia real de la comunidad. Sin humo: aquí nadie decide por ti.",
+    "Cuenta tus decisiones con tu voz o por escrito y la IA las ordena por ti. Cierra el ciclo con lo que pasó de verdad y consulta la experiencia real de la comunidad — con nombre o en anónimo. Aquí nadie decide por ti.",
 };
 
 export const viewport: Viewport = {

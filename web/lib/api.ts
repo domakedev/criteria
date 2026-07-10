@@ -3,7 +3,7 @@ import { idToken } from "./firebase";
 
 export async function api<T>(
   path: string,
-  init?: { method?: "GET" | "POST"; body?: unknown },
+  init?: { method?: "GET" | "POST" | "DELETE"; body?: unknown },
 ): Promise<T> {
   const token = await idToken();
   const res = await fetch(path, {

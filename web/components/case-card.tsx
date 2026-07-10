@@ -19,7 +19,7 @@ export function CaseCard({
   showLayer?: boolean;
 }) {
   return (
-    <article className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
+    <article className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md">
       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
         <span className="rounded-full bg-stone-100 px-2 py-0.5 text-stone-600">
           {domainLabel(c.context.domain)}

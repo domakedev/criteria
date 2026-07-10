@@ -1,14 +1,18 @@
 // POST /api/ask — el motor responde desde el servidor.
-// Busca en la comunidad y, si hay sesión, también en los casos personales del
-// usuario. Nunca inventa: recupera y agrega criterio humano con procedencia.
+// `scope` decide dónde buscar: "all" (mis casos + comunidad, por defecto),
+// "mine" (solo lo mío, incluido lo que compartí) o "community" (solo la
+// comunidad). Nunca inventa: recupera y agrega criterio humano con procedencia.
 import { NextRequest, NextResponse } from "next/server";
 import { ask } from "@/lib/engine";
 import {
   firebaseAdminConfigured,
   listCommunityCases,
+  listOwnCommunityCases,
   listPersonalCases,
   verifyRequestUser,
 } from "@/lib/admin";
+import { sanitizeScope } from "@/lib/validate";
+import type { DecisionCase } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   if (!firebaseAdminConfigured()) {
@@ -18,7 +22,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { situation?: string; domain?: string };
+  let body: { situation?: string; domain?: string; scope?: string };
   try {
     body = await req.json();
   } catch {
@@ -32,13 +36,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const user = await verifyRequestUser(req);
-  const [community, personal] = await Promise.all([
-    listCommunityCases(),
-    user ? listPersonalCases(user.uid) : Promise.resolve([]),
+  const scope = sanitizeScope(body.scope);
+  const user = scope !== "community" ? await verifyRequestUser(req) : null;
+  if (scope === "mine" && !user) {
+    return NextResponse.json(
+      { error: "Inicia sesión para buscar solo en tus decisiones." },
+      { status: 401 },
+    );
+  }
+
+  const none = Promise.resolve<DecisionCase[]>([]);
+  const [community, personal, ownShared] = await Promise.all([
+    scope !== "mine" ? listCommunityCases() : none,
+    user ? listPersonalCases(user.uid) : none,
+    // En "mine" los casos que el usuario compartió también son suyos; en los
+    // demás alcances ya vienen dentro de la comunidad.
+    scope === "mine" && user ? listOwnCommunityCases(user.uid) : none,
   ]);
 
-  const guidance = ask([...personal, ...community], {
+  const guidance = ask([...personal, ...ownShared, ...community], {
     situation,
     ...(body.domain ? { domain: body.domain } : {}),
   });

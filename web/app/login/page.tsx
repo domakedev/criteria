@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Logo } from "@/components/logo";
 import {
   authErrorMessage,
   loginWithEmail,
@@ -80,9 +80,9 @@ export default function LoginPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4 py-10">
-      <Link href="/" className="mb-6 text-center text-lg font-bold text-emerald-900">
-        criteria
-      </Link>
+      <div className="mb-6 flex justify-center">
+        <Logo />
+      </div>
       <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
         <h1 className="text-center text-xl font-semibold">
           {mode === "signup" ? "Crear cuenta" : "Entrar"}
@@ -208,8 +208,8 @@ export default function LoginPage() {
         ) : null}
       </div>
       <p className="mt-4 text-center text-xs text-stone-400">
-        Al entrar aceptas que lo que marques como “compartir” será público con
-        tu nombre.
+        Tus decisiones son privadas por defecto. Si compartes una, eliges si
+        sale con tu nombre o en anónimo — tu correo nunca se muestra.
       </p>
     </main>
   );

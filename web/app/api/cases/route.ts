@@ -1,5 +1,5 @@
 // GET  /api/cases — los casos del usuario en sesión (privados) + su historial.
-// POST /api/cases — guarda una decisión nueva (privada o compartida).
+// POST /api/cases — guarda una decisión nueva (privada, compartida o anónima).
 import { NextRequest, NextResponse } from "next/server";
 import { trackRecord } from "@/lib/engine";
 import {
@@ -9,7 +9,8 @@ import {
   listPersonalCases,
   verifyRequestUser,
 } from "@/lib/admin";
-import type { CaseDraft, Doubt, LensReading, Weight } from "@/lib/types";
+import { sanitizeDomain, sanitizeDoubt, sanitizeLenses } from "@/lib/validate";
+import type { CaseDraft } from "@/lib/types";
 
 function notConfigured() {
   return NextResponse.json(
@@ -36,9 +37,6 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ cases, record: trackRecord(cases) });
 }
 
-const WEIGHTS = new Set<Weight>(["high", "medium", "low"]);
-const DOUBTS = new Set<Doubt>(["low", "medium", "high"]);
-
 export async function POST(req: NextRequest) {
   if (!firebaseAdminConfigured()) return notConfigured();
   const user = await verifyRequestUser(req);
@@ -46,7 +44,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Inicia sesión primero." }, { status: 401 });
   }
 
-  let body: Partial<CaseDraft> & { share?: boolean };
+  let body: Partial<CaseDraft> & { share?: boolean; anonymous?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -62,37 +60,23 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  const doubt: Doubt = DOUBTS.has(body.doubt as Doubt) ? (body.doubt as Doubt) : "medium";
-  const lenses: LensReading[] = Array.isArray(body.lenses)
-    ? body.lenses
-        .filter(
-          (l): l is LensReading =>
-            !!l &&
-            typeof l.name === "string" &&
-            l.name.trim().length > 0 &&
-            typeof l.reading === "string" &&
-            WEIGHTS.has(l.weight as Weight),
-        )
-        .map((l) => ({
-          name: l.name.trim().toLowerCase().replace(/\s+/g, "-"),
-          weight: l.weight,
-          reading: l.reading.trim(),
-        }))
-    : [];
 
+  const share = !!body.share;
   const record = await createCase(user.uid, {
     situation,
     decision,
     reason,
-    doubt,
+    doubt: sanitizeDoubt(body.doubt),
     ...(body.expectation?.trim() ? { expectation: body.expectation.trim() } : {}),
     context: {
-      domain: (body.context?.domain ?? "vida-diaria").trim() || "vida-diaria",
+      domain: sanitizeDomain(body.context?.domain),
       tags: Array.isArray(body.context?.tags) ? body.context.tags : [],
     },
-    lenses,
-    layer: body.share ? "community" : "personal",
-    author: user.name,
+    lenses: sanitizeLenses(body.lenses),
+    layer: share ? "community" : "personal",
+    // Compartir en anónimo: el caso sale público sin el nombre. El authorUid
+    // se guarda igual en el documento (nunca se expone) para poder cerrar el ciclo.
+    author: share && body.anonymous ? "anónimo" : user.name,
   });
   return NextResponse.json({ case: record }, { status: 201 });
 }
