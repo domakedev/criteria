@@ -180,15 +180,19 @@ export function Terrario({
     else onSeleccion({ cid: null, zona: null });
   };
 
+  // En pantallas chicas el mapa no se encoge por debajo de 768 px: se desplaza
+  // de lado (a 360 px los sprites serían de 5 px y no se vería nada).
   return (
-    <canvas
-      ref={canvasRef}
-      width={ANCHO * TILE}
-      height={ALTO * TILE}
-      onPointerDown={onPointer}
-      className="w-full rounded-sm border-[3px] border-[#0b0d14]"
-      style={{ aspectRatio: `${ANCHO} / ${ALTO}`, boxShadow: "0 0 0 2px #1b1f2e, 0 0 0 4px #2d3348" }}
-      aria-label="El terrario: mapa de la colonia"
-    />
+    <div className="overflow-x-auto">
+      <canvas
+        ref={canvasRef}
+        width={ANCHO * TILE}
+        height={ALTO * TILE}
+        onPointerDown={onPointer}
+        className="w-full min-w-[768px] rounded-sm border-[3px] border-[#0b0d14]"
+        style={{ aspectRatio: `${ANCHO} / ${ALTO}`, boxShadow: "0 0 0 2px #1b1f2e, 0 0 0 4px #2d3348" }}
+        aria-label="El terrario: mapa de la colonia"
+      />
+    </div>
   );
 }

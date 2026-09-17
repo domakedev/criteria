@@ -258,12 +258,15 @@ export function comida(g: CanvasRenderingContext2D, x: number, y: number, k: num
 
 export function fuente(g: CanvasRenderingContext2D, x: number, y: number, fase: number): void {
   g.save();
-  g.strokeStyle = `rgba(143,192,245,${0.45 + 0.35 * Math.sin(fase)})`;
-  g.lineWidth = 1.5;
+  // pedestal de piedra y un anillo que respira
+  px(g, x - 5, y - 3, 10, 8, "#6f6f6f");
+  px(g, x - 4, y - 4, 8, 8, "#c9c9c9");
+  px(g, x - 2, y - 2, 4, 4, "#4d8fe3");
+  g.strokeStyle = `rgba(232,255,249,${0.55 + 0.4 * Math.sin(fase)})`;
+  g.lineWidth = 2;
   g.beginPath();
-  g.arc(x, y, 6 + 2 * Math.sin(fase), 0, Math.PI * 2);
+  g.arc(x, y, 8 + 2 * Math.sin(fase), 0, Math.PI * 2);
   g.stroke();
-  px(g, x - 2, y - 2, 4, 4, "#8fc0f5");
   g.restore();
 }
 
@@ -282,9 +285,13 @@ export function letrero(g: CanvasRenderingContext2D, x: number, y: number, texto
 export function letreroRegion(g: CanvasRenderingContext2D, x: number, y: number, texto: string): void {
   g.save();
   g.font = "bold 10px ui-monospace, monospace";
-  g.fillStyle = "rgba(255,255,255,0.55)";
+  const t = texto.toUpperCase();
+  const w = g.measureText(t).width + 10;
+  px(g, x - 3, y - 2, Math.round(w), 14, "rgba(27,27,36,0.85)");
+  px(g, x - 3, y + 12, Math.round(w), 1, "#f5c542");
+  g.fillStyle = "#f6f1dc";
   g.textAlign = "left";
   g.textBaseline = "top";
-  g.fillText(texto.toUpperCase(), x, y);
+  g.fillText(t, x + 2, y);
   g.restore();
 }

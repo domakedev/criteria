@@ -67,9 +67,9 @@ export const REGIONES: Region[] = [
 export const ZONAS: ZonaRect[] = [
   // bosque
   { env: "bosque", zona: "claro", nombre: "el claro", x: 3, y: 3, w: 11, h: 8, piso: "pasto2" },
-  { env: "bosque", zona: "arroyo", nombre: "el arroyo", x: 17, y: 2, w: 12, h: 8, piso: "agua", adorno: "roca", densidad: 0.1 },
+  { env: "bosque", zona: "arroyo", nombre: "el arroyo", x: 17, y: 2, w: 12, h: 8, piso: "agua" },
   { env: "bosque", zona: "espesura", nombre: "la espesura", x: 3, y: 13, w: 12, h: 7, piso: "tierra", adorno: "arbol", densidad: 0.5 },
-  { env: "bosque", zona: "cueva", nombre: "la cueva", x: 19, y: 13, w: 9, h: 7, piso: "cueva", adorno: "roca", densidad: 0.25 },
+  { env: "bosque", zona: "cueva", nombre: "la cueva", x: 19, y: 13, w: 9, h: 7, piso: "cueva" },
   // ciudad
   { env: "ciudad", zona: "plaza", nombre: "la plaza", x: 35, y: 3, w: 11, h: 8, piso: "adoquin" },
   { env: "ciudad", zona: "mercado", nombre: "el mercado", x: 49, y: 2, w: 12, h: 8, piso: "tierra", adorno: "edificio", densidad: 0.15 },
