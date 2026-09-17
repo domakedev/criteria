@@ -465,6 +465,16 @@ export interface LimitesView {
   parametros: number;
 }
 
+export interface PresupuestoView {
+  topeSeguro: number;
+  proyeccionManana: number;
+  proyeccionConUnaMas: number;
+  lecturasManana: number;
+  cabeOtra: boolean;
+  motivo: string | null;
+  ahorro: boolean;
+}
+
 export interface MundoView {
   /** false si la colonia no existe todavía */
   hay: boolean;
@@ -474,6 +484,7 @@ export interface MundoView {
   fotos: Record<string, FotoCriatura>;
   recursos: Record<string, Recurso>;
   limites: LimitesView;
+  presupuesto: PresupuestoView;
   envs: EnvInfo[];
   criaturas: CriaturaView[];
   /** eventos de hoy (los últimos primero) */

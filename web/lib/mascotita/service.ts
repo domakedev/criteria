@@ -9,6 +9,7 @@ import { MascotitaError } from "./errors";
 import { listEnvironments, lugarAlAzar, nombreZona, getEnvironment } from "./envs";
 import { mundoNuevo, rotarDia } from "./latido";
 import { seededRng } from "./rng";
+import { presupuestoVista } from "./presupuesto";
 import { criaturaVista, fotoDe, limitesVista } from "./vistas";
 import type { CriaturaView, MundoView } from "./types";
 
@@ -31,6 +32,7 @@ export async function getMundoView(): Promise<MundoView> {
       fotos: {},
       recursos: {},
       limites,
+      presupuesto: presupuestoVista(null, 0, limites.maxVivas),
       envs,
       criaturas: [],
       cronica: [],
@@ -50,6 +52,7 @@ export async function getMundoView(): Promise<MundoView> {
     fotos: mundo.fotos,
     recursos: mundo.recursos,
     limites,
+    presupuesto: presupuestoVista(mundo, vivas.length, limites.maxVivas),
     envs,
     criaturas: vivas.map((c) => criaturaVista(c, nowIso)).sort((a, b) => a.bornAt.localeCompare(b.bornAt)),
     cronica: (cronica?.eventos ?? []).slice(-LIMITES.cronicaVista).reverse(),

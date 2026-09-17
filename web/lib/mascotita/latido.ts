@@ -7,6 +7,7 @@
 // Fase 1: una sola criatura. Fases 2-3 añaden round-robin, presupuesto
 // proyectado, nacimientos y muertes aquí mismo.
 import { LIMITES, RED } from "./config";
+import { modoAhorro } from "./presupuesto";
 import * as C from "./cognition";
 import { cargarCerebro, cerebroDoc } from "./cerebro";
 import { agregarEventos, cronicaVacia, evento } from "./cronica";
@@ -79,9 +80,20 @@ export async function latir(reason: LatidoReason, opts: { now?: Date; deadlineMs
   const fetchBudget = { remaining: LIMITES.fetchesPorLatido };
 
   try {
-    const vivas = await store.listarVivas(LIMITES.fotos);
-    vivas.sort((a, b) => (a.lastTickAt ?? "").localeCompare(b.lastTickAt ?? "") || a.cid.localeCompare(b.cid));
-    const cupo = Math.min(LIMITES.ticksPorLatido, vivas.length);
+    const todas = await store.listarVivas(LIMITES.fotos);
+    // Round-robin: orden estable por cid, empezando donde quedó el cursor. Con
+    // pocas vivas todas tickean cada latido; con más, se turnan. En modo
+    // ahorro (el día ya gastó demasiado) tickea la mitad.
+    todas.sort((a, b) => a.cid.localeCompare(b.cid));
+    const ahorro = modoAhorro(mundo);
+    const cupoBase = ahorro ? Math.ceil(LIMITES.ticksPorLatido / 2) : LIMITES.ticksPorLatido;
+    const cupo = Math.min(cupoBase, todas.length);
+    const inicio = todas.length ? mundo.rotacion.cursor % todas.length : 0;
+    const vivas: CriaturaDoc[] = todas.map((_, k) => todas[(inicio + k) % todas.length]);
+    mundo.rotacion.cursor = todas.length ? (inicio + cupo) % todas.length : 0;
+    if (ahorro && mundo.dia.latidos % 4 === 1) {
+      eventos.push(evento(nowIso, "aviso", null, "Modo ahorro: hoy ya se gastó el 90 % del presupuesto; tickea la mitad."));
+    }
     const cronica = (await store.getCronica(dayKey)) ?? cronicaVacia(dayKey);
 
     for (let i = 0; i < vivas.length; i++) {
@@ -121,7 +133,7 @@ export async function latir(reason: LatidoReason, opts: { now?: Date; deadlineMs
       procesadas.push(c.cid);
     }
 
-    mundo.poblacion.vivas = vivas.length;
+    mundo.poblacion.vivas = todas.length;
     podarFotos(mundo);
     agregarEventos(cronica, eventos);
     await store.guardarCronica(cronica);
