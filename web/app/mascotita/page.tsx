@@ -273,7 +273,8 @@ export default function ColoniaPage() {
         <div>
           <Terrario mundo={m} seleccion={sel} onSeleccion={setSel} />
           <p className="mt-1 text-[10px] text-[#9aa3b8]">
-            Toca una criatura para ver su mente; toca una zona para intervenir ahí. Los puntos ámbar son comida; el anillo azul, una fuente.
+            Toca una criatura para ver su mente; toca una zona para intervenir ahí. Los puntos ámbar son comida; el anillo azul, una fuente. En el
+            celular, arrastra para moverte por la región o usa los botones de arriba.
           </p>
         </div>
         <div className="space-y-3">

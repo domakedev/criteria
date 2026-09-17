@@ -66,6 +66,18 @@
   flex-wrap: wrap;
 }
 
+@media (max-width: 640px) {
+  .pestanas .pestana {
+    flex: 1 1 28%;
+    text-align: center;
+    padding: 6px 4px;
+  }
+
+  .caja {
+    padding: 8px 9px;
+  }
+}
+
 .pestana {
   font: inherit;
   font-size: 11px;
