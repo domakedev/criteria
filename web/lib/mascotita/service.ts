@@ -1,6 +1,6 @@
 // Operaciones de la colonia que no son un latido: el estado para la página,
 // fundar (nace la primera criatura), borrar todo.
-import { LENGUAJE, LIMITES, cfg } from "./config";
+import { LENGUAJE, LIMITES, SOCIEDAD, cfg } from "./config";
 import * as C from "./cognition";
 import { cerebroDoc, cerebroNuevo } from "./cerebro";
 import { agregarEventos, cronicaVacia, evento } from "./cronica";
@@ -11,7 +11,7 @@ import { mundoNuevo, rotarDia } from "./latido";
 import { seededRng } from "./rng";
 import { presupuestoVista } from "./presupuesto";
 import { criaturaVista, fotoDe, limitesVista } from "./vistas";
-import { anotarLinaje, claveZona, linajeVacio } from "./sociedad";
+import { anotarLinaje, claveZona, linajeVacio, recursoDe } from "./sociedad";
 import { lexicoVacio, lexicoVista, registrarEmision, silaba } from "./lexico";
 import type { CriaturaView, LexicoView, LinajeDoc, MundoView, Senal } from "./types";
 
@@ -182,4 +182,76 @@ export async function decir(uid: string, envId: string, zona: string, simbolos: 
   await store.guardarCronica(cronica);
   await store.guardarMundo(mundo);
   return { ok: true, zona: k };
+}
+
+// --- los recursos del dios ---
+
+async function conMundoAbierto(): Promise<{ mundo: NonNullable<Awaited<ReturnType<ReturnType<typeof getStore>["getMundo"]>>>; now: Date }> {
+  const store = getStore();
+  const now = new Date();
+  const mundo = await store.getMundo();
+  if (!mundo) throw new MascotitaError("Todavía no hay colonia.", 404);
+  if (mundo.latido.lock && Date.parse(mundo.latido.lock.until) > now.getTime()) {
+    throw new MascotitaError("La colonia está latiendo; inténtalo en unos segundos.", 409, mundo.latido.lock.until);
+  }
+  return { mundo, now };
+}
+
+function zonaValida(envId: string, zona: string): void {
+  const env = getEnvironment(envId);
+  if (!env) throw new MascotitaError("Ese lugar no existe.", 400);
+  if (!env.zonas().some((z) => z.id === zona)) throw new MascotitaError("Esa zona no existe.", 400);
+}
+
+/** Dejar comida en una zona (sin límite de veces; con tope por vez). */
+export async function dejarComida(uid: string, envId: string, zona: string, unidades: number): Promise<{ comida: number }> {
+  zonaValida(envId, zona);
+  const n = Math.max(1, Math.min(SOCIEDAD.comidaDiosMax, Math.round(unidades)));
+  const store = getStore();
+  const { mundo, now } = await conMundoAbierto();
+  const nowIso = now.toISOString();
+  const r = recursoDe(mundo, envId, zona);
+  r.comida = Math.round((r.comida + n) * 1000) / 1000;
+  mundo.updatedAt = nowIso;
+  const dayKey = C.limaDayKey(now);
+  const cronica = (await store.getCronica(dayKey)) ?? cronicaVacia(dayKey);
+  agregarEventos(cronica, [
+    evento(nowIso, "dios", null, `El dios dejó ${n} de comida en ${nombreZona(envId, zona)} (${getEnvironment(envId)!.name}); ahora hay ${r.comida}.`, {
+      dios: uid,
+      env: envId,
+      zona,
+      unidades: n,
+    }),
+  ]);
+  await store.guardarCronica(cronica);
+  await store.guardarMundo(mundo);
+  return { comida: r.comida };
+}
+
+/** Plantar una fuente que regenera comida por hora durante unas horas. */
+export async function plantarFuente(uid: string, envId: string, zona: string, porHora: number, horas: number): Promise<{ hasta: string }> {
+  zonaValida(envId, zona);
+  const ph = Math.max(0.1, Math.min(SOCIEDAD.fuenteMaxPorHora, Math.round(porHora * 10) / 10));
+  const h = Math.max(1, Math.min(SOCIEDAD.fuenteMaxHoras, Math.round(horas)));
+  const store = getStore();
+  const { mundo, now } = await conMundoAbierto();
+  const nowIso = now.toISOString();
+  const hasta = new Date(now.getTime() + h * 3_600_000).toISOString();
+  const r = recursoDe(mundo, envId, zona);
+  r.fuente = { porHora: ph, hasta };
+  mundo.updatedAt = nowIso;
+  const dayKey = C.limaDayKey(now);
+  const cronica = (await store.getCronica(dayKey)) ?? cronicaVacia(dayKey);
+  agregarEventos(cronica, [
+    evento(nowIso, "dios", null, `El dios plantó una fuente en ${nombreZona(envId, zona)} (${getEnvironment(envId)!.name}): ${ph} de comida por hora durante ${h} h.`, {
+      dios: uid,
+      env: envId,
+      zona,
+      porHora: ph,
+      horas: h,
+    }),
+  ]);
+  await store.guardarCronica(cronica);
+  await store.guardarMundo(mundo);
+  return { hasta };
 }

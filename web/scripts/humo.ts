@@ -12,7 +12,7 @@
 import { StoreMemoria } from "../lib/mascotita/store-memoria";
 import { setStore } from "../lib/mascotita/db";
 import { latir } from "../lib/mascotita/latido";
-import { fundar } from "../lib/mascotita/service";
+import { decir, dejarComida, fundar, plantarFuente } from "../lib/mascotita/service";
 import { LIMITES, RED, SOCIEDAD } from "../lib/mascotita/config";
 import { topeSeguro } from "../lib/mascotita/presupuesto";
 import { lexicoVista } from "../lib/mascotita/lexico";
@@ -464,6 +464,19 @@ async function escenarioLatidoVacio(): Promise<void> {
   check(r3.skipped === null && r3.procesadas.length === 1, "sin candado: procesa a la criatura");
   check(store.mundo!.latido.lock === null, "al terminar suelta el candado");
   check(store.mundo!.dia.escrituras > 0 && store.mundo!.dia.lecturas > 0, `contadores del día: ${JSON.stringify(store.mundo!.dia)}`);
+
+  // el dios interviene: comida, fuente y habla; todo queda en la crónica
+  const c = [...store.criaturas.values()][0];
+  const comida = await dejarComida("humo", c.env, c.zona, 5);
+  const fuente = await plantarFuente("humo", c.env, c.zona, 1, 24);
+  const dicho = await decir("humo", c.env, c.zona, [3, 7]);
+  check(comida.comida >= 5 && fuente.hasta > new Date().toISOString() && dicho.ok, "el dios deja comida, planta una fuente y habla");
+  const r4 = await latir("cron", { now: new Date(Date.now() + 15 * 60_000) });
+  const oyo = store.criaturas.get(c.cid)!.ultimoTick?.oido;
+  check(r4.procesadas.length === 1 && oyo !== null && oyo !== undefined && oyo.de.includes("dios"), "en el siguiente latido la criatura oye al dios");
+  const hoy = [...store.cronicas.values()][0];
+  check(hoy.eventos.filter((e) => e.tipo === "dios").length === 3, "las tres intervenciones están en la crónica");
+  check((store.mundo!.recursos[`${c.env}/${c.zona}`]?.fuente ?? null) !== null, "la fuente quedó plantada en la zona");
 }
 
 async function main(): Promise<void> {
