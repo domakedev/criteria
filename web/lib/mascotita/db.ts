@@ -156,7 +156,11 @@ export async function acquireLease(uid: string, reason: TickReason, now: Date): 
     }
     const firstTickOfDay = day.ticks === 0;
 
-    // topes y cooldowns
+    // topes y cooldowns. Un "catchup" que no se debe (la página lo pidió sin
+    // horas atrasadas) cuenta como manual: si no, saltaría el cooldown.
+    const owed =
+      !pet.lastTickAt || nowMs - Date.parse(pet.lastTickAt) >= BOUNDS.owedHours * 3_600_000;
+    if (reason === "catchup" && !owed) reason = "manual";
     if (day.ticks >= c.maxTicksDay) return { ok: false, skipped: "cap", retryAt: null };
     if (reason === "manual") {
       if (day.manualTicks >= c.maxManualTicksDay) return { ok: false, skipped: "cap", retryAt: null };

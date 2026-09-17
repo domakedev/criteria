@@ -211,9 +211,13 @@ function resolveImport(spec: string, fromPath: string, paths: Set<string>): stri
     base = normalizePath((dir === ROOT_DIR ? "" : dir + "/") + spec);
   }
   if (!base) return null;
-  for (const suffix of RESOLVE_SUFFIXES) {
-    const candidate = base + suffix;
-    if (paths.has(candidate)) return candidate;
+  // ESM escribe "./store.js" apuntando a "./store.ts": se prueba también sin extensión.
+  const bases = /\.(m?js)$/.test(base) ? [base, base.replace(/\.(m?js)$/, "")] : [base];
+  for (const b of bases) {
+    for (const suffix of RESOLVE_SUFFIXES) {
+      const candidate = b + suffix;
+      if (paths.has(candidate)) return candidate;
+    }
   }
   return null;
 }
@@ -721,7 +725,13 @@ export const repoEnv: Environment = {
         const pool: ConceptDoc[] = a.type === "revisar" ? ctx.toTest : ctx.concepts;
         const concept = pool.find((c) => c.id === conceptId) ?? ctx.concepts.find((c) => c.id === conceptId) ?? ctx.toTest.find((c) => c.id === conceptId);
         const path = a.target;
-        if (!concept || !concept.evidence || concept.ref !== path || !paths.has(path)) {
+        if (
+          !concept ||
+          !concept.evidence ||
+          norm(concept.evidence).length < 4 ||
+          concept.ref !== path ||
+          !paths.has(path)
+        ) {
           return { success: false, reward: -0.1, tags: ["invalido"] };
         }
         const r = await readFile(ctx, tree, path);

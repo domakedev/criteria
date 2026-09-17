@@ -26,8 +26,8 @@ function fromView(c: ChatView): Bubble {
     id: c.id,
     from: c.from,
     text: c.text,
-    used: c.usedConcepts,
-    learned: c.learned,
+    used: c.usedConcepts.map((s) => s.replace(/-/g, " ")),
+    learned: c.learned.map((s) => s.replace(/-/g, " ")),
     moodWord: c.moodWord,
     askTeach: false,
   };
@@ -59,7 +59,13 @@ export function ChatPanel({
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Al montar no se desplaza (la página arrancaría abajo, pasando el informe).
+  const firstScroll = useRef(true);
   useEffect(() => {
+    if (firstScroll.current) {
+      firstScroll.current = false;
+      return;
+    }
     endRef.current?.scrollIntoView({ block: "nearest" });
   }, [bubbles.length, sending]);
 

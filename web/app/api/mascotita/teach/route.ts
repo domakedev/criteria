@@ -5,15 +5,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { guardMascotita } from "@/lib/mascotita/auth";
 import { teachPet } from "@/lib/mascotita/chat";
 import { BOUNDS } from "@/lib/mascotita/config";
-import { errorResponse, invalidBody, readBody, textField } from "../_lib";
+import { errorResponse, invalidBody, readBody, textField, makeLimiter, tooFast } from "../_lib";
 
 export const dynamic = "force-dynamic";
+const limited = makeLimiter(3000);
 // La respuesta de la IA puede tardar ~12 s; el default de Hobby (10 s) la mataría.
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   const g = await guardMascotita(req);
   if ("response" in g) return g.response;
+  if (limited(g.user.uid)) return tooFast();
 
   const body = await readBody(req);
   if (!body) return invalidBody();

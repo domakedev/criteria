@@ -114,6 +114,16 @@ export default function MascotitaPage() {
     }
   }, []);
 
+  // Si está explorando (candado puesto), se vuelve a mirar cuando debería
+  // haber terminado; si no, "Está explorando…" se quedaría para siempre.
+  useEffect(() => {
+    if (!data?.pet?.busy) return;
+    const t = setTimeout(() => {
+      void load();
+    }, 25_000);
+    return () => clearTimeout(t);
+  }, [data?.pet?.busy, load]);
+
   useEffect(() => {
     if (user) load({ initial: true });
   }, [user, load]);
@@ -182,6 +192,7 @@ export default function MascotitaPage() {
       if (err instanceof PetApiError && (err.status === 429 || err.status === 409)) {
         if (err.result?.skipped === "cap") {
           setExploreMsg("Hoy ya exploró suficiente, mañana sigue.");
+          await load(); // refresca los cupos para que el botón no vuelva a habilitarse
         } else if (err.retryAt) {
           setRetryAt(err.retryAt);
         } else {
@@ -367,12 +378,22 @@ export default function MascotitaPage() {
                 pendingQuestion={pet.pendingQuestion}
                 onPet={setPet}
                 onTeach={() => go("ensenar")}
-                onSpent={() => spend("chatsLeft")}
+                onSpent={() => {
+                  spend("chatsLeft");
+                  setRefreshKey((k) => k + 1);
+                }}
               />
             </div>
             {visited.includes("ensenar") ? (
               <div hidden={tab !== "ensenar"}>
-                <TeachPanel teachLeft={data.caps.teachLeft} onPet={setPet} onSpent={() => spend("teachLeft")} />
+                <TeachPanel
+                  teachLeft={data.caps.teachLeft}
+                  onPet={setPet}
+                  onSpent={() => {
+                    spend("teachLeft");
+                    setRefreshKey((k) => k + 1);
+                  }}
+                />
               </div>
             ) : null}
             {visited.includes("sabe") ? (

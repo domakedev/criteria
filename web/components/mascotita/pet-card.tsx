@@ -10,7 +10,7 @@ export function PetCard({ pet, envs }: { pet: PetView; envs: EnvInfo[] }) {
   const env = envInfoFor(envs, pet.env);
   return (
     <section className="animate-fade rounded-2xl border border-stone-200/70 bg-white p-4 shadow-sm sm:p-5">
-      <div className="flex gap-4">
+      <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
         <Avatar pet={pet} size={128} className="border border-stone-100" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">

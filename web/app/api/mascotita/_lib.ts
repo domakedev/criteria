@@ -6,6 +6,23 @@ import { MascotitaError } from "@/lib/mascotita/errors";
 
 export const GENERIC_ERROR = "Algo salió mal. Intenta de nuevo.";
 
+/** Freno en memoria por usuario (1 petición cada `gapMs`); primera línea contra el doble clic. */
+export function makeLimiter(gapMs: number): (uid: string) => boolean {
+  const last = new Map<string, number>();
+  return (uid) => {
+    const now = Date.now();
+    const prev = last.get(uid) ?? 0;
+    if (now - prev < gapMs) return true;
+    last.set(uid, now);
+    if (last.size > 1_000) for (const [k, t] of last) if (now - t > gapMs) last.delete(k);
+    return false;
+  };
+}
+
+export function tooFast(): NextResponse {
+  return NextResponse.json({ error: "Muy seguido. Espera unos segundos e intenta de nuevo." }, { status: 429 });
+}
+
 /** Cuerpo JSON como objeto plano; null si no es JSON válido o no es un objeto. */
 export async function readBody(req: NextRequest): Promise<Record<string, unknown> | null> {
   try {

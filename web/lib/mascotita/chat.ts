@@ -173,7 +173,6 @@ export async function chatWithPet(uid: string, rawText: string): Promise<ChatRes
   pet.day.llmCalls += budget.spent;
   pet.stats.llmCalls += budget.spent;
   pet.lastChatAt = nowIso;
-  pet.lastSeenAt = nowIso;
   pet.pendingQuestion = out.question ?? null;
   pet.brainId = traceId(trace, brain.id);
   pet.updatedAt = nowIso;
@@ -208,7 +207,6 @@ export async function chatWithPet(uid: string, rawText: string): Promise<ChatRes
     mood: pet.mood,
     drives: pet.drives,
     lastChatAt: pet.lastChatAt,
-    lastSeenAt: pet.lastSeenAt,
     pendingQuestion: pet.pendingQuestion,
     brainId: pet.brainId,
     updatedAt: pet.updatedAt,
@@ -280,11 +278,12 @@ export async function teachPet(uid: string, rawText: string): Promise<TeachRespo
       }
       existing.claim = l.claim.slice(0, 160);
       existing.taught = true;
-      existing.toTest = true;
       existing.sources["dueño"] = (existing.sources["dueño"] ?? 0) + 1;
       existing.confidence = Math.max(existing.confidence, CAL.conf0Taught);
       existing.ref = existing.ref ?? ref;
       existing.evidence = existing.evidence ?? l.evidence;
+      // Solo se pone "a prueba" lo que de verdad se puede comprobar.
+      existing.toTest = !!(existing.ref && existing.evidence);
       existing.lastSeenAt = nowIso;
       existing.lastChangeAt = nowIso;
       C.recomputeScore(existing);
@@ -307,6 +306,7 @@ export async function teachPet(uid: string, rawText: string): Promise<TeachRespo
         nowIso,
       ),
     );
+    learned[learned.length - 1].toTest = !!(ref && l.evidence);
     createdIds.add(id);
     pet.stats.concepts += 1;
     pet.stats.taughtConcepts += 1;
@@ -334,7 +334,6 @@ export async function teachPet(uid: string, rawText: string): Promise<TeachRespo
   pet.day.llmCalls += budget.spent;
   pet.stats.llmCalls += budget.spent;
   pet.lastChatAt = nowIso;
-  pet.lastSeenAt = nowIso;
   pet.brainId = traceId(trace, brain.id);
   pet.updatedAt = nowIso;
   const moodWord = C.moodWordFor(pet, false);
@@ -390,7 +389,6 @@ export async function teachPet(uid: string, rawText: string): Promise<TeachRespo
     mood: pet.mood,
     drives: pet.drives,
     lastChatAt: pet.lastChatAt,
-    lastSeenAt: pet.lastSeenAt,
     brainId: pet.brainId,
     updatedAt: pet.updatedAt,
     ...(rolled ? { day: { ...pet.day, teachings: 0, llmCalls: 0 } } : {}),

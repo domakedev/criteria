@@ -424,12 +424,12 @@ export function updatePolicy(
   return { before, after: e.q };
 }
 
-/** Hábitos: top-5 (env, acción) con n ≥ 5 y q > 0.3; fuerza = q·min(1, n/20). */
+/** Hábitos: top-5 (env, acción) con n ≥ 5 y q > 0.15; fuerza = q·min(1, n/20). */
 export function computeHabits(pet: PetDoc): void {
   const out: Habit[] = [];
   for (const [env, actions] of Object.entries(pet.policy)) {
     for (const [action, e] of Object.entries(actions)) {
-      if (e.n < 5 || e.q <= 0.3) continue;
+      if (e.n < 5 || e.q <= 0.15) continue;
       // Las habilidades se cuentan por acción (no por entorno): el "ok" es una cota.
       const ok = Math.min(e.n, pet.skills[action]?.ok ?? 0);
       out.push({ env, action, strength: round3(e.q * Math.min(1, e.n / 20)), n: e.n, ok });
@@ -783,7 +783,8 @@ export interface TraitSignals {
   chattedSinceLastTick: boolean;
   daysSinceOwner: number;
   ludicMeanReward: number | null;
-  orderFrac: number;
+  /** null cuando el entorno no tiene acciones de orden (mundos imaginados) */
+  orderFrac: number | null;
   ticksToday: number;
   firstTickOfDay: boolean;
 }
@@ -805,12 +806,16 @@ export function driftTraits(pet: PetDoc, s: TraitSignals): Partial<Traits> {
     constancia: k * s.retryOutcome,
     sociabilidad: k * (s.chattedSinceLastTick ? 1 : 0) - absence,
     juego: s.ludicMeanReward === null ? 0 : k * (clamp(s.ludicMeanReward, -1, 1) - 0.1),
-    orden: k * (clamp01(s.orderFrac) - 0.2),
+    // Sin acciones de "orden" en el entorno (mundos imaginados) no hay señal.
+    orden: s.orderFrac === null ? 0 : k * (clamp01(s.orderFrac) - 0.2),
   };
   const shift: Partial<Traits> = {};
   for (const key of TRAIT_KEYS) {
     const before = pet.traits[key];
-    const after = round3(clamp(before + delta[key], CAL.traitMin, CAL.traitMax));
+    // Tirón suave hacia los genes: el mundo la moldea, pero no la clava en un
+    // extremo — cada rasgo se asienta en un punto propio según lo que vive.
+    const pull = k * 1.5 * (pet.genes[key] - before);
+    const after = round3(clamp(before + delta[key] + pull, CAL.traitMin, CAL.traitMax));
     pet.traits[key] = after;
     const d = round3(after - before);
     if (Math.abs(d) >= 0.001) shift[key] = d;

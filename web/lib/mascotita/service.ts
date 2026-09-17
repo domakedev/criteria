@@ -101,7 +101,11 @@ export async function getState(uid: string): Promise<StateResponse> {
 }
 
 export async function hatch(uid: string, rawName: string): Promise<PetView> {
-  const name = rawName.replace(/\s+/g, " ").trim().slice(0, BOUNDS.nameMaxChars);
+  const name = rawName
+    .replace(/[^\p{L}\p{N} .'\-]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, BOUNDS.nameMaxChars);
   if (!name) throw new MascotitaError("Ponle un nombre primero.", 400);
   const nowIso = new Date().toISOString();
   const pet = C.newPet(uid, name, nowIso, DEFAULT_ENV, Object.keys(ENVIRONMENTS));
@@ -171,6 +175,10 @@ export async function markSeen(uid: string): Promise<void> {
 }
 
 export async function deletePet(uid: string): Promise<void> {
+  const pet = await DB.getPet(uid);
+  if (pet?.lock && Date.parse(pet.lock.until) > Date.now()) {
+    throw new MascotitaError("Está explorando ahora mismo; espera a que termine.", 409);
+  }
   await DB.resetPet(uid);
 }
 

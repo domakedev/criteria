@@ -70,6 +70,17 @@ function daysSinceDayKey(key: string, now: Date): number {
   return clamp((now.getTime() - t) / DAY_MS, 0, 30);
 }
 
+/**
+ * Novedad de un paso: la percibida si hubo percepción; si no, la estimada
+ * solo cuando el paso salió bien y trajo algo que ver — un fetch fallido no
+ * cuenta como "novedad" (o un entorno muerto la mantendría curiosa y sin
+ * aburrirse jamás).
+ */
+function stepNovelty(si: StepInfo): number {
+  if (si.perceived) return si.perceived.novelty;
+  return si.outcome.success && si.outcome.observation ? si.noveltyPrior : 0;
+}
+
 function mean(xs: number[]): number {
   return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
 }
@@ -388,6 +399,21 @@ export async function runTick(
       io.perceive = { input: ioLog(input), output: ioLog(out) };
       const conf0 = env.kind === "real" ? CAL.conf0Repo : CAL.conf0Imagined;
 
+      // Lo que ya sabía pero no estaba en el conjunto de trabajo (top por
+      // score) se carga antes de decidir "nuevo" vs "reforzar": si no, el
+      // cerebro pisaría conceptos enseñados o comprobados eligiendo etiquetas.
+      const unknownIds = Array.from(
+        new Set(
+          out.percepts
+            .flatMap((p) => p.concepts.map((pc) => C.slugify(pc.label)))
+            .filter((id) => id && !touched.has(id) && !byId.has(id)),
+        ),
+      );
+      if (unknownIds.length > 0) {
+        const prior = await DB.getConcepts(uid, unknownIds).catch(() => [] as ConceptDoc[]);
+        for (const k of prior) byId.set(k.id, k);
+      }
+
       for (const p of out.percepts) {
         const si = stepInfo.find((s) => s.obsId === p.id);
         if (!si) continue;
@@ -403,8 +429,9 @@ export async function runTick(
             reinforcedThisTick.add(id);
             knownN += 1;
             if (d > 0) delta.reinforced += 1;
-            if (pc.evidence && !doc.evidence && si.ref) {
-              doc.ref = doc.ref ?? si.ref;
+            // La evidencia solo vale si es del mismo archivo/objeto que `ref`.
+            if (pc.evidence && !doc.evidence && si.ref && (!doc.ref || doc.ref === si.ref)) {
+              doc.ref = si.ref;
               doc.evidence = pc.evidence;
             }
           } else {
@@ -454,7 +481,7 @@ export async function runTick(
     // política por paso; memorias de lo que valió la pena recordar.
     const qChanges: TickNumbers["qChanges"] = [];
     stepInfo.forEach((si, i) => {
-      const nov = si.perceived?.novelty ?? si.noveltyPrior;
+      const nov = stepNovelty(si);
       const rTotal = clamp(si.outcome.reward + C.intrinsicReward(nov, pet), -1, 1);
       si.rTotal = rTotal;
       steps[i].rTotal = round3(rTotal);
@@ -566,7 +593,7 @@ export async function runTick(
       if (forgotten.length > 0) pushExtra("olvido", env, undefined, forgotten.slice(0, 4));
     }
 
-    const noveltyMean = mean(stepInfo.map((s) => s.perceived?.novelty ?? s.noveltyPrior));
+    const noveltyMean = mean(stepInfo.map(stepNovelty));
     const failFrac = stepInfo.length
       ? stepInfo.filter((s) => !s.outcome.success).length / stepInfo.length
       : 0;
@@ -589,7 +616,7 @@ export async function runTick(
         !!pet.lastChatAt && (!pet.lastTickAt || pet.lastChatAt > pet.lastTickAt),
       daysSinceOwner: hoursSinceOwner / 24,
       ludicMeanReward: ludic.length ? mean(ludic.map((s) => s.rTotal)) : null,
-      orderFrac: stepInfo.length ? orderSteps.length / stepInfo.length : 0,
+      orderFrac: env.kind === "real" && stepInfo.length ? orderSteps.length / stepInfo.length : null,
       ticksToday: Math.max(1, pet.day.ticks),
       firstTickOfDay: firstTickOfDay && !pet.day.absenceApplied,
     });
@@ -603,7 +630,7 @@ export async function runTick(
     ) as Partial<Traits>;
 
     const xpGain =
-      stepInfo.reduce((a, s) => a + Math.abs(s.rTotal), 0) + 0.5 * newSlugs.length + 1;
+      stepInfo.reduce((a, s) => a + Math.abs(s.rTotal), 0) + 0.5 * Math.min(newSlugs.length, 4) + 1;
     const stageChanged: LifeStage | null = C.addXp(pet, xpGain);
     if (stageChanged) pushExtra("etapa", env, stageChanged);
     pet.recentNovelty = [...pet.recentNovelty, round3(noveltyMean)].slice(-3);
@@ -694,6 +721,13 @@ export async function runTick(
       if (doc.toTest && v.verdict !== "duda") doc.toTest = false;
       touched.set(doc.id, doc);
     }
+    const ruleIds = reflect.newRules
+      .map((r) => C.slugify(r.label))
+      .filter((id) => id && !touched.has(id) && !byId.has(id));
+    if (ruleIds.length > 0) {
+      const prior = await DB.getConcepts(uid, ruleIds).catch(() => [] as ConceptDoc[]);
+      for (const k of prior) byId.set(k.id, k);
+    }
     for (const rule of reflect.newRules) {
       const id = C.slugify(rule.label);
       if (!id || touched.has(id) || byId.has(id)) continue;
@@ -762,6 +796,8 @@ export async function runTick(
       pet.brainId = entry.brainId;
     }
     pet.stats.ticks = ticksBefore + 1;
+    // "Explorar ahora": el dueño está mirando; lo de este tick no va al informe.
+    if (reason === "manual") pet.lastSeenAt = nowIso;
     pet.stats.llmCalls += budget.spent;
     pet.day.llmCalls += budget.spent;
     pet.lastTickAt = nowIso;

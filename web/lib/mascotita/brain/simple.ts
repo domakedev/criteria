@@ -101,7 +101,10 @@ function perceiveOne(o: Observation, envKind: PerceiveInput["envKind"]) {
     cand.set(key, { label: clean, kind, count: occurrences + 1 + bonus, order: cand.size });
   };
 
+  const actionNorm = normalizeForMatch(typeof o.action === "string" ? o.action : "");
   for (const h of hints) {
+    // La etiqueta del verbo ("jugar con") no es una cosa del mundo.
+    if (envKind === "imaginado" && actionNorm && normalizeForMatch(h).startsWith(actionNorm)) continue;
     const k: ConceptKind =
       envKind === "imaginado"
         ? isPlace && normalizeForMatch(h) === normalizeForMatch(humanize(o.target))
