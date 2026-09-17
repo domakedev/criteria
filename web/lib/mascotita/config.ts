@@ -184,6 +184,13 @@ export const LENGUAJE = {
   minPista: 5,
 } as const;
 
+/** El narrador (Gemini, solo para el dueño, solo lectura). */
+export const NARRADOR = {
+  porDia: 10,
+  guardadas: 20,
+  maxChars: 24_000,
+} as const;
+
 /** Presupuestos de tiempo y tamaño por tick. */
 export const BOUNDS = {
   fetchTimeoutMs: LIMITES.fetchTimeoutMs,

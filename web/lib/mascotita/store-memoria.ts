@@ -4,7 +4,7 @@
 // que el real, y copia por JSON al leer/escribir para que nadie mute un doc
 // "guardado" por accidente (como pasaría con Firestore).
 import { clean, type Contadores, type LeaseLatido, type Store } from "./store";
-import type { CerebroDoc, CriaturaDoc, CronicaDoc, LexicoDoc, LinajeDoc, MundoDoc, RepoTreeCache } from "./types";
+import type { CerebroDoc, CriaturaDoc, CronicaDoc, LexicoDoc, LinajeDoc, MundoDoc, NarracionesDoc, RepoTreeCache } from "./types";
 
 export class StoreMemoria implements Store {
   readonly id = "memoria" as const;
@@ -16,6 +16,7 @@ export class StoreMemoria implements Store {
   repoTree: RepoTreeCache | null = null;
   linaje: LinajeDoc | null = null;
   lexico: LexicoDoc | null = null;
+  narraciones: NarracionesDoc | null = null;
 
   contadores(): Contadores {
     return { ...this.cont };
@@ -152,6 +153,16 @@ export class StoreMemoria implements Store {
     this.lexico = clean(doc);
   }
 
+  async getNarraciones(): Promise<NarracionesDoc | null> {
+    this.cont.lecturas += 1;
+    return this.narraciones ? clean(this.narraciones) : null;
+  }
+
+  async guardarNarraciones(doc: NarracionesDoc): Promise<void> {
+    this.cont.escrituras += 1;
+    this.narraciones = clean(doc);
+  }
+
   async getRepoTree(): Promise<RepoTreeCache | null> {
     this.cont.lecturas += 1;
     return this.repoTree ? clean(this.repoTree) : null;
@@ -170,6 +181,7 @@ export class StoreMemoria implements Store {
     this.cronicas.clear();
     this.linaje = null;
     this.lexico = null;
+    this.narraciones = null;
   }
 
   async borrarMascotaVieja(): Promise<void> {

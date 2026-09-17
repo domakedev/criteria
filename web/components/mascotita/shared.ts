@@ -127,3 +127,6 @@ export function signed(x: number, digits = 2): string {
 export function num(x: number): string {
   return x.toLocaleString("es-PE");
 }
+
+/** Las 16 sílabas del canal de símbolos (etiquetas para mostrar; el significado, si surge, lo mide el intérprete). */
+export const SILABAS = ["ka", "ti", "mo", "su", "ra", "ne", "pi", "lo", "wa", "ki", "ta", "chu", "yu", "mi", "ño", "sa"];

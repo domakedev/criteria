@@ -14,18 +14,18 @@ export function LimitesPanel({ m }: { m: MundoView }) {
     ["Proyección de mañana", `${num(m.presupuesto.proyeccionManana)} escrituras (con una más: ${num(m.presupuesto.proyeccionConUnaMas)})`],
     ["¿Cabe otra cría?", m.presupuesto.cabeOtra ? "sí" : `no: ${m.presupuesto.motivo ?? ""}`],
     ["Modo ahorro", m.presupuesto.ahorro ? "activo (tickea la mitad)" : "no"],
-    ["Nacidas · muertas", `${num(m.poblacion.nacidas)} · ${num(m.poblacion.muertas)}`],
+    ["Nacidas · muertas · gen máx", `${num(m.poblacion.nacidas)} · ${num(m.poblacion.muertas)} · ${m.poblacion.generacionMax}`],
     ["Ticks por latido", `${l.ticksPorLatido} criaturas · ${l.pasosPorTick} pasos`],
     ["Fetches al repo por latido", `${l.fetchesPorLatido}`],
     ["Crónica", `≤ ${l.cronicaPorDia} eventos/día`],
-    ["Red", `${num(l.parametros)} parámetros · ${l.memorias} memorias · ${l.creencias} creencias`],
+    ["Red", `${num(l.parametros)} parámetros · ${l.memorias} memorias · ${l.creencias} creencias · ${l.simbolos} símbolos`],
   ];
   return (
-    <dl className="space-y-1 text-xs">
+    <dl className="space-y-1 text-[11px] text-[#1b1b24]">
       {filas.map(([k, v]) => (
-        <div key={k} className="flex justify-between gap-3 border-b border-stone-800/70 py-1">
-          <dt className="text-stone-400">{k}</dt>
-          <dd className="text-right text-stone-200 tabular-nums">{v}</dd>
+        <div key={k} className="flex justify-between gap-3 border-b border-dashed border-[#cfc8b4] py-1">
+          <dt className="text-[#5a5a6a]">{k}</dt>
+          <dd className="text-right tabular-nums">{v}</dd>
         </div>
       ))}
     </dl>

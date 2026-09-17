@@ -18,7 +18,7 @@ import type { CollectionReference, DocumentReference, Transaction, WriteBatch } 
 import { adminDb } from "@/lib/admin";
 import { cfg } from "./config";
 import { clean, type Contadores, type LeaseLatido, type Store } from "./store";
-import type { CerebroDoc, CriaturaDoc, CronicaDoc, LexicoDoc, LinajeDoc, MundoDoc, RepoTreeCache } from "./types";
+import type { CerebroDoc, CriaturaDoc, CronicaDoc, LexicoDoc, LinajeDoc, MundoDoc, NarracionesDoc, RepoTreeCache } from "./types";
 
 const COLONIAS = "colonia";
 const CACHE = "mascotita_cache";
@@ -201,6 +201,17 @@ export class StoreFirestore implements Store {
   async guardarLexico(doc: LexicoDoc): Promise<void> {
     this.cont.escrituras += 1;
     await this.sub("meta").doc("lexico").set(clean(doc));
+  }
+
+  async getNarraciones(): Promise<NarracionesDoc | null> {
+    this.cont.lecturas += 1;
+    const snap = await this.sub("meta").doc("narraciones").get();
+    return snap.exists ? (snap.data() as NarracionesDoc) : null;
+  }
+
+  async guardarNarraciones(doc: NarracionesDoc): Promise<void> {
+    this.cont.escrituras += 1;
+    await this.sub("meta").doc("narraciones").set(clean(doc));
   }
 
   // --- caché compartida ---

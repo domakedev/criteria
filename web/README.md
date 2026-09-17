@@ -131,6 +131,16 @@ repartidos), guarda cada una apenas termina y al final el mundo y la crónica.
 La página dispara un latido al abrirse si el último tiene más de 25 min
 (catch-up) y `vercel.json` conserva un cron diario de respaldo.
 
+**El terrario.** `/mascotita` es un mapa de tiles (canvas, todo procedural,
+estética de consola de 16 bits) con cuatro regiones: bosque, ciudad, cine y
+el repositorio. Las criaturas caminan entre zonas, muestran una burbuja con
+la sílaba que acaban de emitir, comen los puntos ámbar y se multiplican a la
+vista. Alrededor: la crónica, la mente de la criatura tocada (cada candidata
+con el valor que le dio su red y cuál eligió), el léxico del intérprete
+(glosas con n y PMI, medidores de bits), el árbol genealógico, el panel del
+dios (comida, fuentes, teclado de símbolos), los límites y el narrador
+(Gemini le cuenta al dueño qué pasó; nada vuelve a las criaturas).
+
 **Presupuesto gratis.** Firestore cuenta documentos: un latido cuesta
 ≈ 2 lecturas y 2 escrituras por criatura más un puñado fijo. Con 12 vivas y
 96 latidos son ≈ 2 700 escrituras/día (14 % del tope gratis). Los contadores

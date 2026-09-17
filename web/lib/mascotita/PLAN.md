@@ -1,6 +1,6 @@
 # Mascotitas — plan de la sociedad con cerebro propio
 
-Estado: **aprobado** (con las decisiones de la sección 14 ya incorporadas). Se construye por fases y cada fase termina con código + prueba de humo + build + commit + resumen, esperando tu OK antes de la siguiente.
+Estado: **construido** (las seis fases, con la autorización de hacerlas de corrido). Cada fase tiene su commit en la rama; lo que difiere de este plan al implementarse está anotado en la sección 15.
 
 Rama: `claude/mascotitas-sociedad-f93fj9`, que parte de `main` (`359e95a`), donde ya está fusionada la primera versión (`5764e22`).
 
@@ -369,3 +369,18 @@ Total ≈ 20 h de mi trabajo, repartidas en las sesiones que hagan falta. Hasta 
 - **D.** `BONO_OYENTE = 0`.
 - **E.** Todo abierto desde el día uno; fundadora en lugar aleatorio; crías junto a la madre (`NACIMIENTO` en config).
 - **F.** Orden de fases tal cual. Terrario con estética tipo Pokémon Esmeralda y narrador Gemini (solo lectura para el dueño) en la fase 6.
+
+---
+
+## 15. Lo que cambió al construirlo (respecto a este plan)
+
+- **Energía a 96 ticks/día.** Los costos de energía de las acciones se escalan por `CAL.energiaEscala = 0.12` y descansar da 0.05: sin eso, con tres pasos cada 15 minutos, se morían en horas. Comer da +0.35 por unidad; en el repo, leer algo nunca leído nutre +0.15.
+- **Regeneración natural** más generosa que la propuesta (arroyo 0.5/h, claro 0.3, mercado 0.5, plaza 0.2, lobby 0.2, tope 6 por zona). En la prueba de 20 días la población sube de 1 a 12 en 9 días y se sostiene con comida natural; mueren sobre todo de vejez y algunas de hambre.
+- **Los cerebros de las muertas se borran al morir** (no a los 7 días): una escritura menos y nada que limpiar después. La ficha y el linaje se conservan.
+- **Mudanzas**: solo se ofrecen al empezar un tick, cuestan 0.15 de energía y −0.1 de recompensa. Sin eso, la criatura cambiaba de mundo cada tres pasos.
+- **Mundos imaginados**: el menú de acciones mezcla la mitad menos probadas y la mitad al azar (antes escondía lo ya probado y no podía repetir lo que le gustaba).
+- **Símbolos**: callar se decide primero (softmax de dos entre el mejor símbolo y callar) y luego cuál; emitir cuesta 0.005 de energía y, para la cabeza de símbolos, 0.1 en unidades de recompensa. Con la propuesta original (16 alternativas contra una) hablaban el 94 % del tiempo por pura aritmética.
+- **Léxico**: los bits de contexto excluyen la familia "objetos a la vista" (multivaluada, sesga la información mutua) y llevan corrección de Miller-Madow; una pista entra en la glosa solo si acompaña ≥ 15 % de las emisiones del símbolo con PMI ≥ 0.3. En la prueba de 20 días: contexto ≈ 0.5 bits ("se dice en situaciones concretas"), consecuencia ≈ 0.02 bits ("ruido": todavía no cambia lo que hace quien oye). La UI muestra los dos medidores con esa lectura.
+- **Narrador** (Gemini, solo lectura para el dueño): `POST /api/mascotita/narrar`, tope 10/día, guardado en `colonia/{id}/meta/narraciones`.
+- **Sin `abrir`**: todo está abierto desde el inicio (decisión tuya).
+- **Datos**: linaje, léxico y narraciones viven en `colonia/{id}/meta/{linaje|lexico|narraciones}`.

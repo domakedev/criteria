@@ -1,0 +1,216 @@
+/* El terrario: estética de consola portátil de 16 bits (inspiración, no
+   copia): fondo oscuro, cajas de diálogo con doble borde y esquinas, texto
+   monoespaciado, píxeles sin suavizar. Solo se carga en /mascotita. */
+
+.terrario-root {
+  --fondo: #10131c;
+  --papel: #f6f1dc;
+  --papel2: #e9e2c6;
+  --tinta: #1b1b24;
+  --tinta2: #5a5a6a;
+  --borde: #2d3348;
+  --acento: #3ca370;
+  --acento2: #f5c542;
+  --rojo: #d64f4f;
+  --azul: #4d8fe3;
+  min-height: 100vh;
+  background: var(--fondo);
+  color: var(--papel);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  image-rendering: pixelated;
+}
+
+.terrario-root canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  touch-action: none;
+  display: block;
+}
+
+.caja {
+  background: var(--papel);
+  color: var(--tinta);
+  border: 3px solid var(--tinta);
+  box-shadow:
+    0 0 0 2px var(--papel),
+    0 0 0 4px var(--borde),
+    4px 4px 0 4px rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+  padding: 10px 12px;
+}
+
+.caja h3 {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tinta2);
+  margin: 0 0 8px;
+}
+
+.caja-oscura {
+  background: #1b1f2e;
+  color: var(--papel);
+  border-color: #0b0d14;
+  box-shadow:
+    0 0 0 2px #1b1f2e,
+    0 0 0 4px var(--borde);
+}
+
+.caja-oscura h3 {
+  color: #9aa3b8;
+}
+
+.pestanas {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.pestana {
+  font: inherit;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 6px 9px;
+  background: #1b1f2e;
+  color: #9aa3b8;
+  border: 2px solid var(--borde);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.pestana[aria-selected="true"] {
+  background: var(--papel);
+  color: var(--tinta);
+  border-color: var(--tinta);
+}
+
+.boton {
+  font: inherit;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 7px 10px;
+  background: var(--acento);
+  color: #06140c;
+  border: 2px solid #0b2a1a;
+  border-radius: 3px;
+  box-shadow: 2px 2px 0 #0b2a1a;
+  cursor: pointer;
+}
+
+.boton:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 #0b2a1a;
+}
+
+.boton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.boton-2 {
+  background: var(--acento2);
+  border-color: #5a4300;
+  box-shadow: 2px 2px 0 #5a4300;
+}
+
+.boton-3 {
+  background: var(--papel2);
+  border-color: var(--tinta);
+  box-shadow: 2px 2px 0 var(--tinta);
+}
+
+.boton-rojo {
+  background: var(--rojo);
+  color: #fff;
+  border-color: #5a1a1a;
+  box-shadow: 2px 2px 0 #5a1a1a;
+}
+
+.campo {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 7px;
+  background: #fff;
+  color: var(--tinta);
+  border: 2px solid var(--tinta);
+  border-radius: 3px;
+  min-width: 0;
+}
+
+.tecla {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  width: 100%;
+  padding: 8px 0;
+  background: #fff;
+  color: var(--tinta);
+  border: 2px solid var(--tinta);
+  border-radius: 3px;
+  box-shadow: 2px 2px 0 var(--tinta);
+  cursor: pointer;
+}
+
+.tecla:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--tinta);
+}
+
+.barra {
+  height: 8px;
+  background: #cfc8b4;
+  border: 1px solid var(--tinta);
+  overflow: hidden;
+}
+
+.barra > div {
+  height: 100%;
+  transition: width 0.6s ease;
+}
+
+.cronica {
+  max-height: 22rem;
+  overflow-y: auto;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.cronica li {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px dashed #cfc8b4;
+  padding: 2px 0;
+}
+
+.chip {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border: 1px solid var(--tinta);
+  border-radius: 2px;
+  background: #fff;
+}
+
+.parpadeo {
+  animation: parpadeo 1.2s steps(2, end) infinite;
+}
+
+@keyframes parpadeo {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.terrario-grid {
+  display: grid;
+  gap: 12px;
+}
+
+@media (min-width: 1024px) {
+  .terrario-grid {
+    grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr);
+    align-items: start;
+  }
+}

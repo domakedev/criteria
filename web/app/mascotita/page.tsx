@@ -1,25 +1,42 @@
 "use client";
 
-// La colonia (vista provisional de las fases 1-5; el terrario llega en la 6):
-// estado del latido, la criatura viva con su mente, la crónica del día y los
-// límites. Al abrirse, si el último latido está atrasado, dispara uno
-// (catch-up) — el respaldo del latido programado.
+// El terrario de la colonia: un mapa de tiles donde se ven las criaturas
+// moverse entre zonas, comer, multiplicarse y emitir símbolos; alrededor,
+// cajas de diálogo con la crónica, la mente de la criatura tocada, el léxico,
+// el linaje, los recursos del dios (comida, fuentes, hablar), los límites y
+// el narrador. Al abrirse, si el latido programado no llegó, dispara uno.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { logout, useSession } from "@/components/auth";
-import { ArrowLeftIcon, LockIcon, LogoutIcon } from "@/components/icons";
 import { CriaturaCard } from "@/components/mascotita/criatura-card";
 import { CronicaPanel } from "@/components/mascotita/cronica-panel";
+import { DiosPanel } from "@/components/mascotita/dios-panel";
+import { LexicoPanel } from "@/components/mascotita/lexico-panel";
 import { LimitesPanel } from "@/components/mascotita/limites-panel";
-import { Card, MentePanel } from "@/components/mascotita/mente-panel";
+import { LinajePanel } from "@/components/mascotita/linaje-panel";
+import { MentePanel } from "@/components/mascotita/mente-panel";
+import { NarradorPanel } from "@/components/mascotita/narrador-panel";
 import { PetApiError, ago, errorMessage, petApi } from "@/components/mascotita/shared";
-import type { LatidoResult, MundoView } from "@/lib/mascotita/types";
+import { Terrario, type Seleccion } from "@/components/mascotita/terrario";
+import type { CriaturaView, LatidoResult, MundoView } from "@/lib/mascotita/types";
+import "./terrario.css";
 
-type Tab = "mente" | "cronica" | "limites";
+type Tab = "cronica" | "mente" | "dios" | "lexico" | "linaje" | "narrador" | "limites";
 type Status = "loading" | "forbidden" | "error" | "ready";
 
-const REFRESH_MS = 30_000;
+const TABS: Array<[Tab, string]> = [
+  ["cronica", "Crónica"],
+  ["mente", "Mente"],
+  ["dios", "Dios"],
+  ["lexico", "Léxico"],
+  ["linaje", "Linaje"],
+  ["narrador", "Narrador"],
+  ["limites", "Límites"],
+];
+
+const REFRESH_MS = 20_000;
+const DOS_HORAS = 2 * 60 * 60_000;
 
 export default function ColoniaPage() {
   const router = useRouter();
@@ -27,11 +44,13 @@ export default function ColoniaPage() {
   const [status, setStatus] = useState<Status>("loading");
   const [m, setM] = useState<MundoView | null>(null);
   const [loadError, setLoadError] = useState("");
-  const [tab, setTab] = useState<Tab>("mente");
-  const [sel, setSel] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("cronica");
+  const [sel, setSel] = useState<Seleccion>({ cid: null, zona: null });
+  const [muerta, setMuerta] = useState<CriaturaView | null>(null);
   const [busy, setBusy] = useState<"latir" | "fundar" | "borrar" | null>(null);
   const [msg, setMsg] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
   const catchupRan = useRef(false);
 
   useEffect(() => {
@@ -44,6 +63,7 @@ export default function ColoniaPage() {
       const v = await petApi<MundoView>("/api/mascotita/mundo");
       setM(v);
       setStatus("ready");
+      setRefreshKey((k) => k + 1);
     } catch (err) {
       if (err instanceof PetApiError && err.status === 403) {
         setStatus("forbidden");
@@ -62,7 +82,6 @@ export default function ColoniaPage() {
     if (user) load(true);
   }, [user, load]);
 
-  // refresco periódico (1 lectura del mundo + las vivas)
   useEffect(() => {
     if (status !== "ready") return;
     const id = setInterval(() => void load(), REFRESH_MS);
@@ -74,13 +93,11 @@ export default function ColoniaPage() {
       setBusy("latir");
       setMsg("");
       try {
-        const { result } = await petApi<{ result: LatidoResult }>("/api/mascotita/latido", {
-          method: "POST",
-          body: { reason },
-        });
+        const { result } = await petApi<{ result: LatidoResult }>("/api/mascotita/latido", { method: "POST", body: { reason } });
         setMsg(
           `Latido #${result.seq}: ${result.procesadas.length} criatura${result.procesadas.length === 1 ? "" : "s"} en ${result.ms} ms` +
-            (result.saltadas.length ? ` · ${result.saltadas.length} saltadas` : ""),
+            (result.nacidas.length ? ` · ${result.nacidas.length} nació` : "") +
+            (result.muertas.length ? ` · ${result.muertas.length} murió` : ""),
         );
       } catch (err) {
         setMsg(errorMessage(err));
@@ -92,12 +109,28 @@ export default function ColoniaPage() {
     [load],
   );
 
-  // catch-up: una vez por carga, si el latido programado no llegó
   useEffect(() => {
     if (status !== "ready" || !m?.atrasado || catchupRan.current) return;
     catchupRan.current = true;
     void latir("catchup");
   }, [status, m, latir]);
+
+  // criatura elegida: viva (viene en el mundo) o muerta (se pide aparte)
+  const viva = m?.criaturas.find((c) => c.cid === sel.cid) ?? null;
+  useEffect(() => {
+    if (!sel.cid || viva) {
+      setMuerta(null);
+      return;
+    }
+    let ok = true;
+    petApi<{ criatura: CriaturaView }>(`/api/mascotita/criatura?cid=${encodeURIComponent(sel.cid)}`)
+      .then((r) => ok && setMuerta(r.criatura))
+      .catch(() => ok && setMuerta(null));
+    return () => {
+      ok = false;
+    };
+  }, [sel.cid, viva]);
+  const actual = viva ?? muerta;
 
   const fundar = async () => {
     setBusy("fundar");
@@ -119,7 +152,7 @@ export default function ColoniaPage() {
     try {
       await petApi("/api/mascotita", { method: "DELETE", body: { confirm } });
       setConfirm("");
-      setSel(null);
+      setSel({ cid: null, zona: null });
     } catch (err) {
       setMsg(errorMessage(err));
     } finally {
@@ -128,16 +161,12 @@ export default function ColoniaPage() {
     }
   };
 
-  if (!enabled || user === undefined || status === "loading") {
-    return <Shell>{null}</Shell>;
-  }
+  if (!enabled || user === undefined || status === "loading") return <Shell>{null}</Shell>;
   if (status === "forbidden") {
     return (
       <Shell>
-        <div className="mx-auto max-w-md rounded-2xl border border-stone-800 bg-stone-900/70 p-6 text-center">
-          <LockIcon className="mx-auto h-8 w-8 text-stone-500" />
-          <p className="mt-3 text-stone-200">Esta puerta es solo para los dioses de la colonia.</p>
-          <p className="mt-1 text-xs text-stone-500">Tu cuenta no está en la lista de dueños.</p>
+        <div className="caja mx-auto max-w-md text-center text-sm">
+          Esta puerta es solo para los dioses de la colonia. Tu cuenta no está en la lista.
         </div>
       </Shell>
     );
@@ -145,9 +174,9 @@ export default function ColoniaPage() {
   if (status === "error" || !m) {
     return (
       <Shell>
-        <div className="mx-auto max-w-md rounded-2xl border border-red-900/60 bg-red-950/30 p-6 text-center text-sm text-red-200">
+        <div className="caja mx-auto max-w-md text-center text-sm">
           {loadError || "No se pudo cargar."}
-          <button onClick={() => load(true)} className="mt-3 block w-full rounded-lg bg-stone-800 px-3 py-2 text-stone-100">
+          <button onClick={() => load(true)} className="boton mt-3 block w-full">
             Reintentar
           </button>
         </div>
@@ -155,124 +184,129 @@ export default function ColoniaPage() {
     );
   }
 
-  const vivas = m.criaturas;
-  const actual = vivas.find((c) => c.cid === sel) ?? vivas[0] ?? null;
+  const sinLatido = m.latido.lastAt && Date.now() - Date.parse(m.latido.lastAt) > DOS_HORAS;
 
   return (
     <Shell>
-      <header className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-stone-400">
+      <div className="caja caja-oscura mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
         <span>
-          Latido <span className="text-stone-200 tabular-nums">#{m.latido.seq}</span>{" "}
-          {m.latido.lastAt ? `· último ${ago(m.latido.lastAt)}` : "· nunca"}
-          {m.latido.ocupado ? <span className="ml-2 animate-pulse text-violet-300">latiendo…</span> : null}
-          {m.atrasado ? <span className="ml-2 text-amber-300">atrasado</span> : null}
+          LATIDO <b className="tabular-nums">#{m.latido.seq}</b> {m.latido.lastAt ? `· ${ago(m.latido.lastAt)}` : "· nunca"}
+          {m.latido.ocupado ? <span className="parpadeo ml-2 text-[#f5c542]">latiendo…</span> : null}
         </span>
         <span>
-          Vivas <span className="text-stone-200 tabular-nums">{m.poblacion.vivas}</span> / {m.limites.maxVivas}
+          VIVAS <b className="tabular-nums">{m.poblacion.vivas}</b>/{m.limites.maxVivas} · gen {m.poblacion.generacionMax}
         </span>
         <span>
-          Escrituras hoy <span className="text-stone-200 tabular-nums">{m.dia.escrituras}</span> / {m.limites.escriturasDia}
+          ESCRITURAS HOY <b className="tabular-nums">{m.dia.escrituras}</b>/{m.limites.escriturasDia}
         </span>
-        <div className="ml-auto flex gap-2">
-          {vivas.length > 0 ? (
-            <button
-              onClick={() => latir("manual")}
-              disabled={busy !== null || m.latido.ocupado}
-              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-            >
+        {sinLatido ? <span className="text-[#f5c542]">⚠ sin latido hace más de 2 h: ¿la Action de GitHub sigue activa?</span> : null}
+        <span className="ml-auto flex gap-2">
+          {m.poblacion.vivas > 0 ? (
+            <button onClick={() => latir("manual")} disabled={busy !== null || m.latido.ocupado} className="boton">
               {busy === "latir" ? "Latiendo…" : "Latir ahora"}
             </button>
           ) : null}
-        </div>
-      </header>
+        </span>
+      </div>
 
-      {msg ? <p className="mb-4 rounded-lg border border-stone-800 bg-stone-900/70 px-3 py-2 text-xs text-stone-300">{msg}</p> : null}
+      {msg ? <p className="caja mb-3 text-[11px]">{msg}</p> : null}
 
-      {vivas.length === 0 ? (
-        <div className="mx-auto max-w-md rounded-2xl border border-stone-800 bg-stone-900/70 p-6 text-center">
-          <p className="text-lg font-semibold text-stone-100">{m.hay ? "La colonia se extinguió." : "No hay colonia todavía."}</p>
-          <p className="mt-2 text-sm text-stone-400">
-            Nace una fundadora en un lugar al azar, con genes al centro y un cerebro recién sorteado. De ahí en adelante, todo lo que
-            sepa lo aprende sola.
+      {m.poblacion.vivas === 0 && !Object.values(m.fotos).some((f) => f.viva) ? (
+        <div className="caja mx-auto mb-3 max-w-md text-center text-sm">
+          <p className="font-bold">{m.hay ? "La colonia se extinguió." : "No hay colonia todavía."}</p>
+          <p className="mt-2 text-[11px] text-[#5a5a6a]">
+            Nace una fundadora en un lugar al azar, con genes al centro y un cerebro recién sorteado. De ahí en adelante, todo lo que sepa lo aprende
+            sola.
           </p>
-          <button
-            onClick={fundar}
-            disabled={busy !== null}
-            className="mt-4 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
+          <button onClick={fundar} disabled={busy !== null} className="boton mt-3">
             {busy === "fundar" ? "Naciendo…" : "Fundar la colonia"}
           </button>
         </div>
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div className="space-y-4">
-            {vivas.length > 1 ? (
-              <div className="flex flex-wrap gap-1.5">
-                {vivas.map((c) => (
-                  <button
-                    key={c.cid}
-                    onClick={() => setSel(c.cid)}
-                    className={`rounded-full px-2.5 py-1 text-xs ${actual?.cid === c.cid ? "bg-stone-100 text-stone-900" : "bg-stone-800 text-stone-300"}`}
-                  >
-                    {c.nombre}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            {actual ? <CriaturaCard c={actual} envs={m.envs} /> : null}
-            <Card title="Crónica de hoy">
-              <CronicaPanel eventos={m.cronica} />
-            </Card>
-          </div>
-          <div className="space-y-4">
-            <nav className="flex gap-1 rounded-xl bg-stone-900/70 p-1 text-xs">
-              {(
-                [
-                  ["mente", "Mente"],
-                  ["cronica", "Crónica"],
-                  ["limites", "Límites"],
-                ] as Array<[Tab, string]>
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  onClick={() => setTab(id)}
-                  className={`flex-1 rounded-lg px-2 py-1.5 ${tab === id ? "bg-stone-100 text-stone-900" : "text-stone-400 hover:text-stone-200"}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </nav>
-            {tab === "mente" && actual ? <MentePanel c={actual} envs={m.envs} /> : null}
-            {tab === "cronica" ? (
-              <Card title="Crónica de hoy">
-                <CronicaPanel eventos={m.cronica} />
-              </Card>
-            ) : null}
-            {tab === "limites" ? (
-              <Card title="Límites y presupuesto (config.ts)">
-                <LimitesPanel m={m} />
-              </Card>
-            ) : null}
-          </div>
+      ) : null}
+
+      <div className="terrario-grid">
+        <div>
+          <Terrario mundo={m} seleccion={sel} onSeleccion={setSel} />
+          <p className="mt-1 text-[10px] text-[#9aa3b8]">
+            Toca una criatura para ver su mente; toca una zona para intervenir ahí. Los puntos ámbar son comida; el anillo azul, una fuente.
+          </p>
         </div>
-      )}
+        <div className="space-y-3">
+          <div className="pestanas" role="tablist">
+            {TABS.map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={tab === id} className="pestana" onClick={() => setTab(id)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {tab === "cronica" ? (
+            <div className="caja">
+              <h3>Crónica de hoy</h3>
+              <CronicaPanel eventos={m.cronica} cid={sel.cid} />
+            </div>
+          ) : null}
+          {tab === "mente" ? (
+            <div className="caja">
+              <h3>Mente</h3>
+              {actual ? (
+                <>
+                  <CriaturaCard c={actual} envs={m.envs} />
+                  <div className="my-3 border-t-2 border-dashed border-[#cfc8b4]" />
+                  <MentePanel c={actual} envs={m.envs} />
+                </>
+              ) : (
+                <p className="text-[11px] text-[#5a5a6a]">Toca una criatura en el mapa (o en el linaje).</p>
+              )}
+            </div>
+          ) : null}
+          {tab === "dios" ? (
+            <div className="caja">
+              <h3>El dios</h3>
+              <DiosPanel envs={m.envs} zona={sel.zona} onHecho={(t) => (setMsg(t), void load())} />
+            </div>
+          ) : null}
+          {tab === "lexico" ? (
+            <div className="caja">
+              <h3>Léxico</h3>
+              <LexicoPanel refreshKey={refreshKey} />
+            </div>
+          ) : null}
+          {tab === "linaje" ? (
+            <div className="caja">
+              <h3>Linaje</h3>
+              <LinajePanel
+                refreshKey={refreshKey}
+                seleccion={sel.cid}
+                onElegir={(cid) => {
+                  const f = m.fotos[cid];
+                  setSel({ cid, zona: f ? { env: f.env, zona: f.zona } : sel.zona });
+                  setTab("mente");
+                }}
+              />
+            </div>
+          ) : null}
+          {tab === "narrador" ? (
+            <div className="caja">
+              <h3>Narrador</h3>
+              <NarradorPanel />
+            </div>
+          ) : null}
+          {tab === "limites" ? (
+            <div className="caja">
+              <h3>Límites y presupuesto (config.ts)</h3>
+              <LimitesPanel m={m} />
+            </div>
+          ) : null}
+        </div>
+      </div>
 
       {m.hay ? (
-        <details className="mt-8 rounded-2xl border border-stone-800/70 p-4 text-xs text-stone-500">
+        <details className="caja caja-oscura mt-4 text-[11px]">
           <summary className="cursor-pointer">Empezar de cero</summary>
-          <p className="mt-2">Borra la colonia entera: mundo, criaturas, cerebros y crónica. No hay vuelta atrás.</p>
+          <p className="mt-2 text-[#9aa3b8]">Borra la colonia entera: mundo, criaturas, cerebros, crónica, linaje y léxico. No hay vuelta atrás.</p>
           <div className="mt-2 flex gap-2">
-            <input
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              placeholder="Escribe BORRAR"
-              className="rounded-lg border border-stone-800 bg-stone-950 px-2 py-1 text-stone-200"
-            />
-            <button
-              onClick={borrar}
-              disabled={confirm !== "BORRAR" || busy !== null}
-              className="rounded-lg bg-red-900/60 px-3 py-1 text-red-100 disabled:opacity-40"
-            >
+            <input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Escribe BORRAR" className="campo" />
+            <button onClick={borrar} disabled={confirm !== "BORRAR" || busy !== null} className="boton boton-rojo">
               Borrar
             </button>
           </div>
@@ -284,16 +318,14 @@ export default function ColoniaPage() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="min-h-screen bg-stone-950 text-stone-200">
-      <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6">
-        <div className="mb-4 flex items-center justify-between">
-          <Link href="/app" className="inline-flex items-center gap-1.5 text-sm text-stone-400 hover:text-stone-100">
-            <ArrowLeftIcon className="h-4 w-4" />
-            criteria
+    <main className="terrario-root">
+      <div className="mx-auto max-w-6xl px-3 py-3 sm:px-5">
+        <div className="mb-3 flex items-center justify-between text-[11px] uppercase tracking-wider text-[#9aa3b8]">
+          <Link href="/app" className="hover:text-white">
+            ← criteria
           </Link>
-          <h1 className="text-sm font-semibold tracking-wide text-stone-100">Mascotitas · la colonia</h1>
-          <button onClick={() => logout()} className="inline-flex items-center gap-1.5 text-sm text-stone-400 hover:text-stone-100">
-            <LogoutIcon className="h-4 w-4" />
+          <span className="text-[#f6f1dc]">Mascotitas · el terrario</span>
+          <button onClick={() => logout()} className="hover:text-white">
             Salir
           </button>
         </div>

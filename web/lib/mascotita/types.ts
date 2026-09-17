@@ -10,6 +10,7 @@
 //   colonia/{id}/cronica/{YYYY-MM-DD}    → CronicaDoc (eventos del día)
 //   colonia/{id}/meta/linaje             → LinajeDoc (árbol genealógico)
 //   colonia/{id}/meta/lexico             → LexicoDoc (conteos del intérprete)
+//   colonia/{id}/meta/narraciones        → NarracionesDoc (resúmenes de Gemini para el dueño)
 //   mascotita_cache/repoTree             → RepoTreeCache (compartido, 1 fetch/día)
 
 // --- personalidad, ánimo, impulsos ---
@@ -377,6 +378,22 @@ export interface LexicoView {
   glosas: GlosaView[];
   bigramas: Array<{ bigrama: string; n: number }>;
   at: string;
+}
+
+// --- narraciones (Gemini le cuenta al dueño; nada vuelve a las criaturas) ---
+
+export interface NarracionDoc {
+  at: string;
+  texto: string;
+  dios: string;
+  modelo: string;
+}
+
+export interface NarracionesDoc {
+  items: NarracionDoc[];
+  diaKey: string;
+  hoy: number;
+  updatedAt: string;
 }
 
 // --- linaje ---
