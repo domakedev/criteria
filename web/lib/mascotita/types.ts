@@ -371,6 +371,8 @@ export interface RepoTreeCache {
   fetchedAt: string;
   /** ≤ 800 blobs de texto */
   tree: RepoTreeEntry[];
+  /** último intento de refresco (para no insistir cada tick si GitHub falla) */
+  lastAttemptAt?: string;
 }
 
 export interface UsageDoc {
@@ -560,7 +562,7 @@ export interface StepView {
   tags: string[];
 }
 
-export type TickSkipReason = "locked" | "cap" | "cooldown" | "nopet" | "inactive";
+export type TickSkipReason = "locked" | "cap" | "cooldown" | "nopet" | "inactive" | "error";
 
 export interface TickResult {
   skipped: TickSkipReason | null;

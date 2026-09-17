@@ -121,16 +121,12 @@ export async function moveEnv(uid: string, envId: string): Promise<PetView> {
   if (!pet.allowedEnvs.includes(envId)) pet.allowedEnvs.push(envId);
   const nowIso = new Date().toISOString();
   if (pet.env !== envId) {
+    const prevEnv = getEnvironment(pet.env);
     pet.env = envId;
     pet.drives.boredom = clamp01(pet.drives.boredom - 0.3);
     pet.lastSeenAt = nowIso;
     pet.updatedAt = nowIso;
-    const t = C.templateEntry("entorno", {
-      pet,
-      env: envId,
-      envName: env.name,
-      detail: `Mi dueño me llevó a ${env.name}.`,
-    });
+    const t = moveTemplate(pet, C.envNameInSentence(prevEnv?.name ?? pet.env), C.envNameInSentence(env.name));
     const entry: DiaryEntryDoc = {
       id: `${nowIso}-entorno`,
       at: nowIso,
@@ -155,6 +151,18 @@ export async function moveEnv(uid: string, envId: string): Promise<PetView> {
     ]);
   }
   return C.toPetView(pet, nowIso);
+}
+
+/** Mudanza pedida por el dueño: texto propio (el de "entorno" es para cuando se va sola). */
+function moveTemplate(pet: PetDoc, from: string, to: string): { title: string; text: string } {
+  const v = pet.stage === "huevo" || pet.stage === "cria" ? 0 : pet.stage === "joven" ? 1 : 2;
+  const titles = ["Me llevaron a otro lado", "¡Viaje!", "Cambio de paisaje"];
+  const texts = [
+    `Mi dueño me cargó y me trajo a ${to}. Antes estaba en ${from}. Huele distinto. Voy a mirar todo.`,
+    `¡Mi dueño me trajo a ${to}! Ya me sabía ${from} casi de memoria. Tengo ganas de meter la nariz en todo lo nuevo.`,
+    `Mi dueño decidió que hoy tocaba ${to}. Dejo ${from} un tiempo; volveré a verlo con otros ojos.`,
+  ];
+  return { title: titles[v], text: texts[v] };
 }
 
 export async function markSeen(uid: string): Promise<void> {
@@ -185,7 +193,7 @@ export async function runCron(): Promise<{
   const skipped: Array<{ uid: string; why: string }> = [];
   for (const pet of pets) {
     const remaining = TOTAL_MS - (Date.now() - started);
-    if (remaining < 20_000) {
+    if (remaining < 30_000) {
       skipped.push({ uid: pet.uid, why: "sin tiempo" });
       continue;
     }

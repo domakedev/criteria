@@ -3,7 +3,7 @@
 // confianza 0.6 y queda marcado para ponerse a prueba en el entorno — nunca
 // como regla del sistema. Responde SOLO desde su conocimiento (ids validados).
 import { BOUNDS, CAL, CAPS, cfg } from "./config";
-import { clamp01, round3 } from "./rng";
+import { round3 } from "./rng";
 import * as C from "./cognition";
 import * as DB from "./db";
 import { MascotitaError } from "./errors";
@@ -121,6 +121,7 @@ export async function chatWithPet(uid: string, rawText: string): Promise<ChatRes
   const now = new Date();
   const dayKey = C.limaDayKey(now);
   const pet = await loadPetOrThrow(uid);
+  const base = { day: { ...pet.day } };
   rollDay(pet, dayKey);
   if (pet.day.chats >= c.maxChatsDay) {
     throw new MascotitaError("Por hoy ya conversaron bastante. Mañana sigue.", 429);
@@ -133,8 +134,7 @@ export async function chatWithPet(uid: string, rawText: string): Promise<ChatRes
   const { out, pool, budget, trace, brain, nowIso } = await speak(pet, uid, "charla", text, dayKey);
 
   // Efectos: la compañía baja la soledad; recordar afianza un poco.
-  C.applyChatMood(pet, out.moodShift);
-  pet.drives.loneliness = clamp01(pet.drives.loneliness - CAL.lonelinessChatRelief);
+  C.applyChatMood(pet, out.moodShift); // ya incluye el alivio de la soledad
   const touched: ConceptDoc[] = [];
   for (const id of out.usedConcepts) {
     const doc = pool.find((k) => k.id === id);
@@ -144,9 +144,21 @@ export async function chatWithPet(uid: string, rawText: string): Promise<ChatRes
     }
   }
   const learned: ConceptDoc[] = [];
+  const candidateIds = out.learned.slice(0, 2).map((l) => C.slugify(l.label)).filter(Boolean);
+  const existingOutsidePool = await DB.getConcepts(
+    uid,
+    candidateIds.filter((id) => !pool.some((k) => k.id === id)),
+  ).catch(() => [] as ConceptDoc[]);
   for (const l of out.learned.slice(0, 2)) {
     const id = C.slugify(l.label);
     if (!id || pool.some((k) => k.id === id) || learned.some((k) => k.id === id)) continue;
+    const prior = existingOutsidePool.find((k) => k.id === id);
+    if (prior) {
+      // Ya lo sabía (fuera del conjunto cargado): recordarlo refuerza, no lo pisa.
+      C.recallConcept(prior, nowIso);
+      touched.push(prior);
+      continue;
+    }
     learned.push(
       C.newConcept(
         { id, label: l.label, kind: l.kind, claim: l.claim, source: "dueño", evidence: l.evidence, conf0: CAL.conf0Chat },
@@ -154,6 +166,7 @@ export async function chatWithPet(uid: string, rawText: string): Promise<ChatRes
       ),
     );
   }
+  const rolled = pet.day.key !== base.day.key;
   pet.stats.concepts += learned.length;
   pet.stats.chats += 1;
   pet.day.chats += 1;
@@ -189,17 +202,25 @@ export async function chatWithPet(uid: string, rawText: string): Promise<ChatRes
     },
   ];
 
+  // Los contadores van como incrementos atómicos: un tick en curso no los pisa
+  // ni los pisa esta charla a él.
+  await DB.savePet(uid, {
+    mood: pet.mood,
+    drives: pet.drives,
+    lastChatAt: pet.lastChatAt,
+    lastSeenAt: pet.lastSeenAt,
+    pendingQuestion: pet.pendingQuestion,
+    brainId: pet.brainId,
+    updatedAt: pet.updatedAt,
+    ...(rolled ? { day: { ...pet.day, chats: 0, llmCalls: 0 } } : {}),
+  });
   await Promise.all([
-    DB.savePet(uid, {
-      mood: pet.mood,
-      drives: pet.drives,
-      stats: pet.stats,
-      day: pet.day,
-      lastChatAt: pet.lastChatAt,
-      lastSeenAt: pet.lastSeenAt,
-      pendingQuestion: pet.pendingQuestion,
-      brainId: pet.brainId,
-      updatedAt: pet.updatedAt,
+    DB.bumpPetCounters(uid, {
+      "day.chats": 1,
+      "day.llmCalls": budget.spent,
+      "stats.chats": 1,
+      "stats.llmCalls": budget.spent,
+      "stats.concepts": learned.length,
     }),
     DB.upsertConcepts(uid, [...touched, ...learned]),
     DB.addChats(uid, docs),
@@ -223,6 +244,7 @@ export async function teachPet(uid: string, rawText: string): Promise<TeachRespo
   const now = new Date();
   const dayKey = C.limaDayKey(now);
   const pet = await loadPetOrThrow(uid);
+  const base = { day: { ...pet.day } };
   rollDay(pet, dayKey);
   if (pet.day.teachings >= c.maxTeachDay) {
     throw new MascotitaError("Por hoy ya le enseñaste bastante. Deja que lo compruebe explorando.", 429);
@@ -232,11 +254,17 @@ export async function teachPet(uid: string, rawText: string): Promise<TeachRespo
   const ref = await refFromText(text);
 
   const learned: ConceptDoc[] = [];
+  const createdIds = new Set<string>();
   let contradiction: TeachResponse["contradiction"] = null;
+  const teachIds = out.learned.slice(0, 3).map((l) => C.slugify(l.label)).filter(Boolean);
+  const outsidePool = await DB.getConcepts(
+    uid,
+    teachIds.filter((id) => !pool.some((k) => k.id === id)),
+  ).catch(() => [] as ConceptDoc[]);
   for (const l of out.learned.slice(0, 3)) {
     const id = C.slugify(l.label);
     if (!id || learned.some((k) => k.id === id)) continue;
-    const existing = pool.find((k) => k.id === id);
+    const existing = pool.find((k) => k.id === id) ?? outsidePool.find((k) => k.id === id);
     if (existing) {
       // Ya conocía algo con ese nombre. Si lo comprobó en el entorno y el
       // dueño dice otra cosa, no lo pisa: lo dice ("Pero yo vi que…").
@@ -279,6 +307,7 @@ export async function teachPet(uid: string, rawText: string): Promise<TeachRespo
         nowIso,
       ),
     );
+    createdIds.add(id);
     pet.stats.concepts += 1;
     pet.stats.taughtConcepts += 1;
   }
@@ -297,8 +326,9 @@ export async function teachPet(uid: string, rawText: string): Promise<TeachRespo
     pet.stats.concepts = Math.max(0, pet.stats.concepts - deleted.length);
   }
 
-  C.applyChatMood(pet, out.moodShift);
-  pet.drives.loneliness = clamp01(pet.drives.loneliness - CAL.lonelinessChatRelief * 0.5);
+  C.applyChatMood(pet, out.moodShift); // ya incluye el alivio de la soledad
+  const rolled = pet.day.key !== base.day.key;
+  const newTaught = learned.filter((k) => createdIds.has(k.id)).length;
   pet.stats.teachings += 1;
   pet.day.teachings += 1;
   pet.day.llmCalls += budget.spent;
@@ -329,7 +359,7 @@ export async function teachPet(uid: string, rawText: string): Promise<TeachRespo
     seq: null,
     delta: {
       ...C.emptyDelta(),
-      newConcepts: learned.filter((k) => k.hits === 0).map((k) => k.id).slice(0, 6),
+      newConcepts: learned.filter((k) => createdIds.has(k.id)).map((k) => k.id).slice(0, 6),
       question: out.question,
     },
   };
@@ -356,16 +386,23 @@ export async function teachPet(uid: string, rawText: string): Promise<TeachRespo
     },
   ];
 
+  await DB.savePet(uid, {
+    mood: pet.mood,
+    drives: pet.drives,
+    lastChatAt: pet.lastChatAt,
+    lastSeenAt: pet.lastSeenAt,
+    brainId: pet.brainId,
+    updatedAt: pet.updatedAt,
+    ...(rolled ? { day: { ...pet.day, teachings: 0, llmCalls: 0 } } : {}),
+  });
   await Promise.all([
-    DB.savePet(uid, {
-      mood: pet.mood,
-      drives: pet.drives,
-      stats: pet.stats,
-      day: pet.day,
-      lastChatAt: pet.lastChatAt,
-      lastSeenAt: pet.lastSeenAt,
-      brainId: pet.brainId,
-      updatedAt: pet.updatedAt,
+    DB.bumpPetCounters(uid, {
+      "day.teachings": 1,
+      "day.llmCalls": budget.spent,
+      "stats.teachings": 1,
+      "stats.llmCalls": budget.spent,
+      "stats.concepts": newTaught - deleted.length,
+      "stats.taughtConcepts": newTaught - deleted.length,
     }),
     DB.upsertConcepts(uid, learned),
     deleted.length ? DB.deleteConcepts(uid, deleted) : Promise.resolve(),

@@ -138,9 +138,11 @@ detrás de `MASCOTITA_BRAIN_URL`, mismo contrato). Los pares entrada→salida de
 cada tick quedan en `mascotas/{uid}/ticks/*` como dataset para entrenarlo.
 
 **Desplegar.** En Vercel agrega `MASCOTITA_OWNERS` (tu correo o uid — si no,
-cualquier usuario con sesión puede criar una) y `CRON_SECRET` (cualquier
-cadena larga); `web/vercel.json` ya declara el cron diario (`09:00 UTC` =
-04:00 en Lima). El plan Hobby permite un cron al día, suficiente: el resto lo
+cualquier usuario con sesión puede criar una), `CRON_SECRET` (cualquier
+cadena larga) y, recomendado, `GITHUB_TOKEN` (un token de solo lectura: sin
+él GitHub limita a 60 peticiones/hora por IP compartida y el árbol del repo
+falla seguido — la mascota sigue viva con rutas semilla, pero ve menos);
+`web/vercel.json` ya declara el cron diario (`09:00 UTC` = 04:00 en Lima). El plan Hobby permite un cron al día, suficiente: el resto lo
 cubre el catch-up al abrir la página. Topes por día (ticks, llamadas a la IA,
 charlas) en `.env.local.example`; sin cambiar nada, el peor caso ronda
 ~60k tokens/día de Gemini Flash.

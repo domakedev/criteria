@@ -20,6 +20,7 @@ import {
   makeDeadline,
   traceId,
   type BeliefView,
+  type Brain,
   type BrainTrace,
   type EpisodeView,
   type Observation,
@@ -63,7 +64,8 @@ function seq6(seq: number): string {
 }
 
 function daysSinceDayKey(key: string, now: Date): number {
-  const t = Date.parse(`${key}T00:00:00Z`);
+  // La clave es un día de Lima (UTC−5): su medianoche es 05:00Z.
+  const t = Date.parse(`${key}T05:00:00Z`);
   if (!Number.isFinite(t)) return 0;
   return clamp((now.getTime() - t) / DAY_MS, 0, 30);
 }
@@ -120,6 +122,7 @@ export async function runTick(
   const lease = await DB.acquireLease(uid, reason, now);
   if (!lease.ok) return emptyResult(lease.skipped, lease.retryAt, deadline.elapsed());
   const { pet, seq, firstTickOfDay } = lease;
+  const base: PetDoc = JSON.parse(JSON.stringify(pet));
   const rng = seededRng(uid, seq);
   const dayKey = C.limaDayKey(now);
   const ticksBefore = pet.stats.ticks;
@@ -137,7 +140,16 @@ export async function runTick(
   );
   const budget = makeBudget(llmRemaining);
   const trace: BrainTrace = { used: [] };
-  const brain = await makeBrain(trace, llmRemaining <= 0);
+  let brain: Brain;
+  try {
+    brain = await makeBrain(trace, llmRemaining <= 0);
+  } catch {
+    // Si el cerebro principal ni siquiera carga, el simple siempre está.
+    const { SimpleBrain } = await import("./brain/simple");
+    brain = new SimpleBrain();
+    trace.used.push("simple");
+  }
+  let persisted = false;
 
   // Estado de trabajo: se acumula aquí y se persiste en el finally.
   const touched = new Map<string, ConceptDoc>();
@@ -181,6 +193,12 @@ export async function runTick(
     pet.stats.ticks = ticksBefore + 1;
     // --- 1. conjunto de trabajo y paso del tiempo ---
     const ws = await DB.loadWorkingSet(uid, pet.env);
+    // Un mismo concepto puede venir por las dos consultas (top por score y
+    // toTest): una sola instancia, o se verificaría dos veces en un tick.
+    {
+      const canon = new Map(ws.concepts.map((k) => [k.id, k] as const));
+      ws.toTest = ws.toTest.map((k) => canon.get(k.id) ?? k);
+    }
     const hours = pet.lastTickAt
       ? clamp((now.getTime() - Date.parse(pet.lastTickAt)) / 3_600_000, 0, 24 * 30)
       : 0;
@@ -200,11 +218,11 @@ export async function runTick(
     }
     const switched = C.maybeSwitchEnv(pet, rng);
     if (switched && getEnvironment(switched)) {
+      const prevName = C.envNameInSentence(env.name);
       envId = switched;
       env = getEnvironment(switched)!;
       pet.env = envId;
-      pet.stats.envSwitches += 1;
-      pushExtra("entorno", env, `Me aburrí y me fui sola a ${env.name}.`);
+      pushExtra("entorno", env, prevName);
     }
     envState =
       ws.envState && ws.envState.envId === envId
@@ -235,8 +253,11 @@ export async function runTick(
     let successesAfterFail = 0;
     let hadFail = false;
 
+    // El episodio se corta en proporción al plazo (el cron da plazos cortos) y
+    // nunca empieza un paso sin tiempo para su fetch + la percepción.
+    const episodeMs = Math.min(BOUNDS.episodeMs, deadline.totalMs * 0.45);
     for (let i = 0; i < K; i++) {
-      if (deadline.elapsed() > BOUNDS.episodeMs) break;
+      if (deadline.elapsed() > episodeMs || deadline.remaining() < 14_000) break;
       let cands: Action[] = [];
       try {
         cands = (await env.affordances(ctx)).slice(0, 8);
@@ -357,7 +378,13 @@ export async function runTick(
           .map((k) => k.label),
         envKind: env.kind,
       };
-      const out = await brain.perceive(input, { budget, deadline });
+      let out: Awaited<ReturnType<Brain["perceive"]>>;
+      try {
+        out = await brain.perceive(input, { budget, deadline });
+      } catch {
+        out = { percepts: [] }; // sin percepción hoy; la experiencia numérica igual cuenta
+        trace.used.push("simple");
+      }
       io.perceive = { input: ioLog(input), output: ioLog(out) };
       const conf0 = env.kind === "real" ? CAL.conf0Repo : CAL.conf0Imagined;
 
@@ -434,9 +461,6 @@ export async function runTick(
       const { before, after } = C.updatePolicy(pet, envId, si.action.type, rTotal);
       qChanges.push({ env: envId, action: si.action.type, before: round3(before), after: round3(after) });
       C.applyStepMood(pet, rTotal, nov);
-      if (nov > 0.5) {
-        pet.drives.boredom = clamp01(pet.drives.boredom - CAL.boredomNoveltyRelief);
-      }
       pet.stats.steps += 1;
       if (si.perceived || Math.abs(si.outcome.reward) >= 0.3) {
         newMemories.push(
@@ -462,7 +486,22 @@ export async function runTick(
     for (const k of ws.concepts) if (k.kind === "habito") habitMap.set(k.id, k);
     for (const k of touched.values()) if (k.kind === "habito") habitMap.set(k.id, k);
     const cons = C.consolidate([...ws.memories, ...newMemories], habitMap, nowIso);
+    // Un hábito puede existir fuera del conjunto de trabajo: se refuerza, no se pisa.
+    const unknownHabits = cons.changed.filter((k) => !byId.has(k.id) && !touched.has(k.id));
+    const existingHabits = unknownHabits.length
+      ? await DB.getConcepts(uid, unknownHabits.map((k) => k.id)).catch(() => [] as ConceptDoc[])
+      : [];
     for (const k of cons.changed) {
+      const prior = existingHabits.find((e) => e.id === k.id);
+      if (prior) {
+        prior.confidence = clamp01(prior.confidence + 0.15 * (1 - prior.confidence));
+        prior.hits += 1;
+        prior.lastSeenAt = nowIso;
+        C.recomputeScore(prior);
+        byId.set(prior.id, prior);
+        touched.set(prior.id, prior);
+        continue;
+      }
       if (!byId.has(k.id) && !touched.has(k.id)) {
         newSlugs.push(k.id);
         pet.stats.concepts += 1;
@@ -475,12 +514,17 @@ export async function runTick(
     }
 
     const forgotten: string[] = [];
+    let sweepData: [ConceptDoc[], MemoryDoc[]] | null = null;
     if (pet.day.sweptKey !== dayKey) {
+      try {
+        sweepData = await Promise.all([DB.loadAllConcepts(uid), DB.loadAllMemories(uid)]);
+      } catch {
+        sweepData = null; // sin lectura completa no hay barrido hoy; sweptKey no avanza
+      }
+    }
+    if (sweepData) {
       const days = daysSinceDayKey(pet.day.sweptKey, now);
-      const [all, allMem] = await Promise.all([
-        DB.loadAllConcepts(uid),
-        DB.loadAllMemories(uid),
-      ]);
+      const [all, allMem] = sweepData;
       const merged = new Map<string, ConceptDoc>();
       for (const k of all) merged.set(k.id, k);
       for (const k of touched.values()) merged.set(k.id, k);
@@ -502,12 +546,11 @@ export async function runTick(
           forgotten.push(id);
         }
         touched.delete(id);
+        merged.delete(id);
       }
       pet.stats.forgotten += forgotten.length;
-      pet.stats.concepts = Math.max(0, merged.size - forgotten.length);
-      pet.stats.taughtConcepts = [...merged.values()].filter(
-        (k) => k.taught && !forgotten.includes(k.id),
-      ).length;
+      pet.stats.concepts = merged.size;
+      pet.stats.taughtConcepts = [...merged.values()].filter((k) => k.taught).length;
       const memById = new Map<string, MemoryDoc>();
       for (const m of allMem) memById.set(m.id, m);
       for (const m of updatedMemories) memById.set(m.id, m);
@@ -551,7 +594,13 @@ export async function runTick(
       firstTickOfDay: firstTickOfDay && !pet.day.absenceApplied,
     });
     if (firstTickOfDay) pet.day.absenceApplied = true;
-    delta.traitShift = traitShift;
+    // Se guarda el cambio crudo (redondeado): el informe suma varios ticks y
+    // decide qué se nota; filtrar aquí escondería la deriva lenta de una adulta.
+    delta.traitShift = Object.fromEntries(
+      Object.entries(traitShift)
+        .filter(([, v]) => typeof v === "number" && Math.abs(v) >= 0.001)
+        .map(([k, v]) => [k, round3(v as number)]),
+    ) as Partial<Traits>;
 
     const xpGain =
       stepInfo.reduce((a, s) => a + Math.abs(s.rTotal), 0) + 0.5 * newSlugs.length + 1;
@@ -615,13 +664,24 @@ export async function runTick(
       numbers,
     };
     let reflect: ReflectOutput;
-    if (deadline.remaining() > BOUNDS.reflectMinRemainingMs) {
-      reflect = await brain.reflect(reflectInput, { budget, deadline });
-    } else {
-      // Sin tiempo para el LLM: la voz simple escribe el diario igual.
-      const { SimpleBrain } = await import("./brain/simple");
-      reflect = await new SimpleBrain().reflect(reflectInput, { budget: makeBudget(0), deadline });
-      trace.used.push("simple");
+    try {
+      if (deadline.remaining() > BOUNDS.reflectMinRemainingMs) {
+        reflect = await brain.reflect(reflectInput, { budget, deadline });
+      } else {
+        // Sin tiempo para el LLM: la voz simple escribe el diario igual.
+        const { SimpleBrain } = await import("./brain/simple");
+        reflect = await new SimpleBrain().reflect(reflectInput, { budget: makeBudget(0), deadline });
+        trace.used.push("simple");
+      }
+    } catch {
+      reflect = {
+        verdicts: [],
+        newRules: [],
+        diaryTitle: "",
+        diaryText: "",
+        questionForOwner: null,
+        moodWord: null,
+      };
     }
     io.reflect = { input: ioLog(reflectInput), output: ioLog(reflect) };
 
@@ -656,7 +716,9 @@ export async function runTick(
     delta.question = pet.pendingQuestion;
 
     const brainId = traceId(trace, brain.id);
-    if (ticksBefore === 0) pushExtra("nacimiento", env);
+    if (ticksBefore === 0 && !extraEntries.some((e) => e.kind === "nacimiento")) {
+      pushExtra("nacimiento", env);
+    }
     entry = {
       id: `${seq6(seq)}-tick`,
       at: nowIso,
@@ -675,6 +737,9 @@ export async function runTick(
   } finally {
     // Pase lo que pase, lo vivido se guarda: números primero, palabras después.
     const env = getEnvironment(envId) ?? ENVIRONMENTS[DEFAULT_ENV];
+    if (ticksBefore === 0 && !extraEntries.some((e) => e.kind === "nacimiento")) {
+      pushExtra("nacimiento", env);
+    }
     if (!entry) {
       const t = C.templateEntry("cambio", {
         pet,
@@ -720,6 +785,7 @@ export async function runTick(
     };
     const write: DB.TickWrite = {
       pet,
+      base,
       concepts: [...touched.values()],
       deletedConcepts,
       memories: [...newMemories, ...updatedMemories],
@@ -730,12 +796,16 @@ export async function runTick(
     };
     try {
       await DB.persistTick(uid, write);
-    } catch {
+      persisted = true;
+    } catch (err) {
+      console.error("[mascotita] no se pudo guardar el tick", seq, err instanceof Error ? err.message : err);
       await DB.releaseLease(uid, seq).catch(() => {});
     }
     if (budget.spent > 0) await DB.bumpGlobalLlm(dayKey, budget.spent).catch(() => {});
     if (seq % 10 === 0) await DB.pruneTicks(uid).catch(() => {});
   }
+
+  if (!persisted) return emptyResult("error", null, deadline.elapsed());
 
   return {
     skipped: null,
