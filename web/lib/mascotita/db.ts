@@ -2,7 +2,14 @@
 // la prueba de humo llama a setStore(new StoreMemoria()) antes de correr.
 // Si mañana la base es otra, se implementa `Store` y se cambia aquí: nada más
 // del núcleo sabe de Firestore.
+//
+// El import de StoreFirestore es ESTÁTICO a propósito: firebase-admin es un
+// paquete externo ESM y Turbopack compila ese módulo como asíncrono; un
+// `require()` perezoso lo recibía a medio cargar (StoreFirestore undefined)
+// y la API respondía 500 en producción. Importarlo no inicializa nada: la
+// app "admin" se crea recién al usarla.
 import type { Store } from "./store";
+import { StoreFirestore } from "./store-firestore";
 import type { RepoTreeCache } from "./types";
 
 let actual: Store | null = null;
@@ -12,12 +19,7 @@ export function setStore(s: Store): void {
 }
 
 export function getStore(): Store {
-  if (!actual) {
-    // Import perezoso: así la prueba de humo nunca carga firebase-admin.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { StoreFirestore } = require("./store-firestore") as typeof import("./store-firestore");
-    actual = new StoreFirestore();
-  }
+  if (!actual) actual = new StoreFirestore();
   return actual;
 }
 
