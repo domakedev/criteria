@@ -12,12 +12,13 @@
 //   colonia/{id}/cerebros/{cid}        CerebroDoc
 //   colonia/{id}/cronica/{YYYY-MM-DD}  CronicaDoc
 //   colonia/{id}/meta/linaje           LinajeDoc
+//   colonia/{id}/meta/lexico           LexicoDoc
 //   mascotita_cache/repoTree           RepoTreeCache
 import type { CollectionReference, DocumentReference, Transaction, WriteBatch } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/admin";
 import { cfg } from "./config";
 import { clean, type Contadores, type LeaseLatido, type Store } from "./store";
-import type { CerebroDoc, CriaturaDoc, CronicaDoc, LinajeDoc, MundoDoc, RepoTreeCache } from "./types";
+import type { CerebroDoc, CriaturaDoc, CronicaDoc, LexicoDoc, LinajeDoc, MundoDoc, RepoTreeCache } from "./types";
 
 const COLONIAS = "colonia";
 const CACHE = "mascotita_cache";
@@ -189,6 +190,17 @@ export class StoreFirestore implements Store {
   async guardarLinaje(doc: LinajeDoc): Promise<void> {
     this.cont.escrituras += 1;
     await this.sub("meta").doc("linaje").set(clean(doc));
+  }
+
+  async getLexico(): Promise<LexicoDoc | null> {
+    this.cont.lecturas += 1;
+    const snap = await this.sub("meta").doc("lexico").get();
+    return snap.exists ? (snap.data() as LexicoDoc) : null;
+  }
+
+  async guardarLexico(doc: LexicoDoc): Promise<void> {
+    this.cont.escrituras += 1;
+    await this.sub("meta").doc("lexico").set(clean(doc));
   }
 
   // --- caché compartida ---

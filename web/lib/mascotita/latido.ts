@@ -4,7 +4,7 @@
 // round-robin (en serie, con plazo por criatura y presupuesto de fetches
 // compartido), decide muertes y nacimientos, guarda cada criatura apenas
 // termina, y al final el mundo, la crónica, el linaje y los contadores del día.
-import { LIMITES, RED, SOCIEDAD, cfg } from "./config";
+import { LENGUAJE, LIMITES, RED, SOCIEDAD, cfg } from "./config";
 import { cabeOtra, modoAhorro } from "./presupuesto";
 import * as C from "./cognition";
 import { cargarCerebro, cerebroDoc } from "./cerebro";
@@ -25,7 +25,9 @@ import {
 } from "./sociedad";
 import { runTick } from "./tick";
 import { fotoDe } from "./vistas";
-import type { CriaturaDoc, Evento, LatidoReason, LatidoResult, LinajeDoc, MundoDoc } from "./types";
+import { lexicoVacio, resumir } from "./lexico";
+import { emisorasDe, resumirOido } from "./senales";
+import type { CriaturaDoc, Evento, LatidoReason, LatidoResult, LinajeDoc, MundoDoc, Senal } from "./types";
 
 export function mundoNuevo(id: string, now: string, dayKey: string): MundoDoc {
   return {
@@ -90,8 +92,17 @@ export async function latir(reason: LatidoReason, opts: { now?: Date; deadlineMs
     // comida: lo que creció desde el último latido
     const horas = mundo.latido.lastAt ? Math.max(0, (now.getTime() - Date.parse(mundo.latido.lastAt)) / 3_600_000) : 0;
     regenerarRecursos(mundo, horas, nowIso);
+    // Señales: se conservan las del latido anterior (para que las oiga quien
+    // tickea ahora) y las de este; lo más viejo se borra.
+    for (const k of Object.keys(mundo.senales)) {
+      mundo.senales[k] = mundo.senales[k].filter((x) => x.seq >= seq - 1);
+      if (mundo.senales[k].length === 0) delete mundo.senales[k];
+    }
+    const lexico = (await store.getLexico()) ?? lexicoVacio(nowIso);
 
     const todas = await store.listarVivas(LIMITES.fotos);
+    const hijosDe = new Map<string, Set<string>>();
+    for (const c of todas) if (c.padre) (hijosDe.get(c.padre) ?? hijosDe.set(c.padre, new Set()).get(c.padre)!).add(c.cid);
     // Round-robin: orden estable por cid, empezando donde quedó el cursor. Con
     // pocas vivas todas tickean cada latido; con más, se turnan. En modo
     // ahorro (el día ya gastó demasiado) tickea la mitad.
@@ -130,6 +141,11 @@ export async function latir(reason: LatidoReason, opts: { now?: Date; deadlineMs
       const aqui = claveZona(c.env, c.zona);
       let otras = 0;
       for (const [cid, k] of donde) if (cid !== c.cid && k === aqui) otras += 1;
+      const senalesAqui = mundo.senales[aqui];
+      const oido = resumirOido(senalesAqui, c, seq, hijosDe.get(c.cid) ?? new Set());
+      const emisoras = oido ? emisorasDe(senalesAqui, c.cid) : [];
+      const social = mundo.pendientes[c.cid] ?? 0;
+      delete mundo.pendientes[c.cid];
 
       const out = await runTick(c, red, {
         now,
@@ -138,9 +154,27 @@ export async function latir(reason: LatidoReason, opts: { now?: Date; deadlineMs
         esHoraDeSonar,
         otras,
         recursos: mundo.recursos,
+        oido,
+        emisoras,
+        social,
+        lexico,
       });
       eventos.push(...out.eventos);
       donde.set(c.cid, claveZona(c.env, c.zona));
+      // lo que dijo queda en su zona para quien venga después
+      if (out.emitidas.length > 0) {
+        const k = claveZona(c.env, c.zona);
+        const lista: Senal[] = mundo.senales[k] ?? [];
+        for (const e of out.emitidas) lista.push({ de: c.cid, sim: e.sim, seq, dios: false });
+        mundo.senales[k] = lista.slice(-LENGUAJE.senalesPorZona);
+      }
+      // la ventaja (o el daño) de lo oído es de quien habló
+      for (const v of out.ventajas) {
+        for (const de of v.de) {
+          if (de === "dios") continue;
+          mundo.pendientes[de] = Math.round(((mundo.pendientes[de] ?? 0) + RED.beta * v.ventaja) * 1000) / 1000;
+        }
+      }
       if (!red.sana()) {
         // Un NaN en los pesos no se guarda jamás: se conservan los previos.
         eventos.push(evento(nowIso, "aviso", c.cid, `${c.nombre}: la red se desbordó en el tick ${out.seq}; se conservan los pesos previos.`));
@@ -203,18 +237,30 @@ export async function latir(reason: LatidoReason, opts: { now?: Date; deadlineMs
       const pasosPrevios = cerebroPrevio?.pasos ?? 0;
       await store.guardarCriatura(c);
       await store.guardarCerebro(cerebroDoc(c.cid, red, pasosPrevios + out.pasosGradiente, out.perdida, nowIso));
-      mundo.fotos[c.cid] = fotoDe(c);
+      const foto = fotoDe(c);
+      const ultima = out.emitidas[out.emitidas.length - 1];
+      if (ultima) {
+        foto.ultimoSimbolo = ultima.sim;
+        foto.simboloAt = nowIso;
+      } else if (mundo.fotos[c.cid]?.simboloAt) {
+        foto.ultimoSimbolo = mundo.fotos[c.cid].ultimoSimbolo;
+        foto.simboloAt = mundo.fotos[c.cid].simboloAt;
+      }
+      mundo.fotos[c.cid] = foto;
       procesadas.push(c.cid);
     }
 
     if (vivasAhora === 0 && todas.length > 0) {
       eventos.push(evento(nowIso, "aviso", null, "La colonia se extinguió. Solo el dios puede fundar otra."));
     }
+    for (const cid of muertas) delete mundo.pendientes[cid];
     mundo.poblacion.vivas = vivasAhora;
     podarFotos(mundo);
     agregarEventos(cronica, eventos);
     await store.guardarCronica(cronica);
     if (linaje) await store.guardarLinaje(linaje);
+    resumir(lexico, nowIso, dayKey);
+    await store.guardarLexico(lexico);
   } finally {
     const cont = store.contadores();
     mundo.dia.lecturas += cont.lecturas - contInicio.lecturas;

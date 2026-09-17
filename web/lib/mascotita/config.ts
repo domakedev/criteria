@@ -113,7 +113,11 @@ export const RED = {
   /** mutación de los rasgos de nacimiento (desviación) */
   mutacionRasgos: 0.05,
   /** costo de energía por símbolo emitido */
-  costoEmitir: 0.01,
+  costoEmitir: 0.005,
+  /** costo en unidades de recompensa que la cabeza de símbolos paga por emitir sin que sirva */
+  costoEmitirValor: 0.1,
+  /** temperatura de la cabeza de símbolos = temperatura de acción × esto (más decidida) */
+  tauSimbolos: 0.5,
   /** peso de la ventaja de la oyente en la recompensa social de la emisora */
   beta: 0.8,
   bonoOyente: 0,
@@ -158,6 +162,27 @@ export const RECURSOS_NATURALES: Record<string, number> = {
   "ciudad/plaza": 0.2,
   "cine/lobby": 0.2,
 };
+
+/** El canal de símbolos y el intérprete. Las sílabas son etiquetas para mostrar; nadie les asigna significado. */
+export const LENGUAJE = {
+  silabas: ["ka", "ti", "mo", "su", "ra", "ne", "pi", "lo", "wa", "ki", "ta", "chu", "yu", "mi", "ño", "sa"],
+  /** señales que se conservan por zona */
+  senalesPorZona: 8,
+  /** símbolos por emisión del dios */
+  maxDios: 3,
+  /** recorte de la ventaja de la oyente */
+  ventajaMax: 0.3,
+  /** ventaja mínima para anotarla en la crónica */
+  ventajaCronica: 0.15,
+  /** una pista entra en la glosa si acompaña al menos esta fracción de las emisiones del símbolo */
+  minFraccionPista: 0.15,
+  minPmiPista: 0.3,
+  clavesPorSimbolo: 60,
+  /** emisiones mínimas para intentar una glosa */
+  minGlosa: 20,
+  /** conteo mínimo de una pista para entrar en la glosa */
+  minPista: 5,
+} as const;
 
 /** Presupuestos de tiempo y tamaño por tick. */
 export const BOUNDS = {

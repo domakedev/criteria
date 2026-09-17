@@ -75,6 +75,52 @@ export function elegir(red: Red, xs: Float32Array[], tau: number, rng: () => num
   return { index, qs, salidas };
 }
 
+/**
+ * Índice del símbolo a emitir (0..15) o 16 = callar. Primero decide si habla
+ * (softmax de dos entre el mejor símbolo y callar), luego cuál: así callar no
+ * compite en desventaja numérica contra dieciséis alternativas.
+ */
+export function elegirSimbolo(s: Salida, tau: number, rng: () => number): number {
+  const n = DIMS.simbolos - 1;
+  const qs = Array.from(s.simbolos.subarray(0, n));
+  const mejor = Math.max(...qs);
+  const callar = s.simbolos[n];
+  const t = Math.max(0.02, tau * RED.tauSimbolos);
+  const habla = softmaxSample([mejor, callar], t, rng) === 0;
+  if (!habla) return n;
+  return softmaxSample(qs, t, rng);
+}
+
+/**
+ * Entrena la cabeza de símbolos con lo que cobraron las emisiones del tick
+ * anterior: objetivo = recompensa social repartida − costo de emitir (callar
+ * no cuesta ni cobra). Bandit contextual: solo la salida elegida recibe gradiente.
+ */
+export function entrenarSimbolos(red: Red, emisiones: Array<{ x: string; sim: number }>, social: number, lr: number): ResultadoEntreno {
+  const g = new Float32Array(red.p.length);
+  const dSim = new Float32Array(DIMS.simbolos);
+  const emitidas = emisiones.filter((e) => e.sim < DIMS.simbolos - 1).length;
+  let perdida = 0;
+  let norma = 0;
+  let pasos = 0;
+  for (const e of emisiones) {
+    const q = base64AInt8(e.x);
+    if (!q || q.length !== DIMS.entrada) continue;
+    const x = new Float32Array(DIMS.entrada);
+    for (let i = 0; i < x.length; i++) x[i] = q[i] / 127;
+    const s = red.forward(x);
+    const callo = e.sim >= DIMS.simbolos - 1;
+    const objetivo = callo ? 0 : (emitidas > 0 ? social / emitidas : 0) - RED.costoEmitirValor;
+    dSim.fill(0);
+    dSim[e.sim] = huberGrad(s.simbolos[e.sim], objetivo, RED.huberDelta);
+    perdida += huber(s.simbolos[e.sim], objetivo, RED.huberDelta);
+    red.backward(x, s, { dq: 0, dMundo: null, dSimbolos: dSim }, g);
+    norma += red.aplicar(g, lr, RED.clipNorm);
+    pasos += 1;
+  }
+  return { pasos, perdidaMedia: round3(perdida / Math.max(1, pasos)), normaMedia: round3(norma / Math.max(1, pasos)) };
+}
+
 export function pExito(s: Salida): number {
   return sigmoid(s.mundo[0]);
 }

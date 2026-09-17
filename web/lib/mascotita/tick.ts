@@ -10,12 +10,13 @@
 //     reproduce las mismas decisiones.
 //   · No toca la base: recibe la criatura y su red, y devuelve lo que cambió.
 //     El latido (latido.ts) carga y guarda.
-import { CAL, LIMITES, RED, SOCIEDAD } from "./config";
+import { CAL, LENGUAJE, LIMITES, RED, SOCIEDAD } from "./config";
 import { clamp, clamp01, round3, seededRng } from "./rng";
 import * as C from "./cognition";
-import { Anillo, elegir, entrenar, pExito, retornos, sonar, sorpresaDe, type Experiencia } from "./cerebro";
-import type { Red } from "./nn";
+import { Anillo, elegir, elegirSimbolo, entrenar, entrenarSimbolos, pExito, retornos, sonar, sorpresaDe, type Experiencia } from "./cerebro";
+import { int8ABase64, type Red } from "./nn";
 import { vectorEntrada, type ContextoSenales, type Oido } from "./senales";
+import { objetosAlaVista, registrarConsecuencia, registrarEmision, silaba, type ContextoEmision } from "./lexico";
 import { actualizarCreencia, claveCreencia, podarCreencias } from "./creencias";
 import { evento, signo } from "./cronica";
 import { makeDeadline, type Deadline } from "./plazo";
@@ -34,7 +35,7 @@ import {
   type Environment,
   type Outcome,
 } from "./envs";
-import type { CandidataRegistro, CriaturaDoc, Evento, PasoRegistro, Recurso, UltimoTick } from "./types";
+import type { CandidataRegistro, CriaturaDoc, Evento, LexicoDoc, OidoRegistro, PasoRegistro, Recurso, UltimoTick } from "./types";
 
 const ORDER_ACTIONS = new Set(["releer", "seguir"]);
 const MAX_MUDANZAS = 3;
@@ -45,8 +46,14 @@ export interface TickOpts {
   deadline?: Deadline;
   /** presupuesto de fetches compartido por el latido */
   fetchBudget: { remaining: number };
-  /** lo que oyó en su zona desde el último tick (fase 4) */
+  /** lo que oyó en su zona desde el último tick */
   oido?: Oido | null;
+  /** quiénes emitieron lo que oyó (cids o "dios") */
+  emisoras?: string[];
+  /** recompensa social acumulada por sus emisiones del tick anterior */
+  social?: number;
+  /** el léxico del intérprete (se muta: contexto de emisiones, consecuencias en quien oye) */
+  lexico?: LexicoDoc;
   /** otras criaturas en su zona */
   otras?: number;
   /** recursos del mundo ("env/zona" → comida); se muta al comer */
@@ -55,9 +62,25 @@ export interface TickOpts {
   esHoraDeSonar?: boolean;
 }
 
+export interface Emitida {
+  sim: number;
+  paso: number;
+}
+
+export interface VentajaOida {
+  /** quiénes emitieron lo oído */
+  de: string[];
+  /** ventaja (recortada) que la señal le dio a la oyente; puede ser negativa */
+  ventaja: number;
+}
+
 export interface TickOut {
   seq: number;
   eventos: Evento[];
+  /** símbolos que emitió en este tick */
+  emitidas: Emitida[];
+  /** ventajas atribuibles a lo que oyó (una por paso en que cambió de idea) */
+  ventajas: VentajaOida[];
   /** pérdida media de los pasos de gradiente */
   perdida: number;
   pasosGradiente: number;
@@ -75,6 +98,7 @@ interface PasoInterno {
   sorpresa: number;
   rTotal: number;
   candidatas: CandidataRegistro[];
+  simbolo: number | null;
   ms: number;
 }
 
@@ -107,6 +131,15 @@ export async function runTick(c: CriaturaDoc, red: Red, opts: TickOpts): Promise
   let normaMedia = 0;
   let activacion: number[] = [];
   const temperatura = C.temperaturaDe(c);
+  const emitidas: Emitida[] = [];
+  const ventajas: VentajaOida[] = [];
+  const oido = opts.oido ?? null;
+  const oidoRegistro: OidoRegistro | null = oido
+    ? { simbolos: oido.conteo.flatMap((n, k) => Array.from({ length: n }, () => k)), de: opts.emisoras ?? [] }
+    : null;
+  const social = opts.social ?? 0;
+  let golpeReciente = c.ultimoTick?.pasos.some((p) => p.r <= -0.5) ?? false;
+  let comioEnTick = false;
 
   const nombre = c.nombre;
   const ev = (tipo: Evento["tipo"], texto: string, datos: Record<string, string | number | boolean> = {}) =>
@@ -154,6 +187,14 @@ export async function runTick(c: CriaturaDoc, red: Red, opts: TickOpts): Promise
       oido: opts.oido ?? null,
     };
     C.applyCompania(c, opts.otras ?? 0);
+    if (oido) c.stats.oidas += 1;
+
+    // --- 1b. lo que dijo en el tick anterior cobra (o paga) ahora ---
+    if (c.emisiones.length > 0) {
+      const r = entrenarSimbolos(red, c.emisiones, social, c.genes.lr);
+      pasosGradiente += r.pasos;
+      c.emisiones = [];
+    }
 
     // --- 2. episodio: K pasos, la red elige ---
     const K = C.stepsFor(c.etapa);
@@ -195,6 +236,52 @@ export async function runTick(c: CriaturaDoc, red: Red, opts: TickOpts): Promise
       const a = cands[idx];
       const salida = el.salidas[idx];
       activacion = Array.from(salida.h2, (v) => round3(v));
+
+      // ¿Cambió de idea por lo que oyó? Se compara con lo que habría elegido en silencio.
+      let cambioDeIdea = false;
+      let q0Alternativa = 0;
+      if (oido) {
+        const mudo: ContextoSenales = { ...senales, oido: null };
+        const xs0 = cands.map((a2, k) => vectorEntrada(mudo, a2, novedad[k], c.creencias[claveCreencia(a2.target, a2.type)]));
+        let best = 0;
+        let bestQ = -Infinity;
+        xs0.forEach((x0, k) => {
+          const q = red.forward(x0).q;
+          if (q > bestQ) {
+            bestQ = q;
+            best = k;
+          }
+        });
+        cambioDeIdea = best !== idx;
+        q0Alternativa = bestQ;
+      }
+
+      // Símbolo: la cabeza de símbolos decide qué decir (o callar) en este estado.
+      const sim = elegirSimbolo(salida, temperatura, rng);
+      let simbolo: number | null = null;
+      if (sim < LIMITES.simbolos) {
+        simbolo = sim;
+        c.drives.energy = round3(clamp01(c.drives.energy - RED.costoEmitir));
+        c.emisiones.push({ x: cuantizar(xs[idx]), sim });
+        c.stats.emisiones += 1;
+        emitidas.push({ sim, paso: i });
+        if (opts.lexico) {
+          const ctxE: ContextoEmision = {
+            env: envId,
+            zona,
+            objetos: objetosAlaVista(c, cands.map((k) => ({ accion: k.type, objetivo: k.target }))),
+            comida: senales.comida,
+            energia: c.drives.energy,
+            golpeReciente,
+            otras: opts.otras ?? 0,
+            comio: comioEnTick,
+          };
+          const anterior = emitidas.length >= 2 ? emitidas[emitidas.length - 2].sim : null;
+          registrarEmision(opts.lexico, sim, ctxE, anterior);
+        }
+      } else {
+        c.emisiones.push({ x: cuantizar(xs[idx]), sim });
+      }
 
       let out: Outcome;
       if (a.type === REST_ACTION.type) {
@@ -262,6 +349,34 @@ export async function runTick(c: CriaturaDoc, red: Red, opts: TickOpts): Promise
       const intrinseca = round3(RED.curiosidadPeso * sorpresa * (0.5 + c.rasgos.curiosidad));
       const rTotal = round3(clamp(out.reward + intrinseca, -1, 1));
       C.applyStepMood(c, rTotal, novedad[idx]);
+      if (out.reward <= -0.5) golpeReciente = true;
+      if (a === EAT_ACTION && out.success) comioEnTick = true;
+
+      // Lo oído: si cambió de idea, la ventaja (o el daño) es de quien habló.
+      if (oido && i === 0) {
+        if (cambioDeIdea) {
+          const ventaja = round3(clamp(rTotal - q0Alternativa, -LENGUAJE.ventajaMax, LENGUAJE.ventajaMax));
+          ventajas.push({ de: opts.emisoras ?? [], ventaja });
+          if (Math.abs(ventaja) >= LENGUAJE.ventajaCronica) {
+            const dichos = oidoRegistro?.simbolos.map((k) => `«${silaba(k)}»`).join(" ") ?? "";
+            ev("senal", `${nombre} oyó ${dichos} y cambió de idea: ${a.label} (${signo(ventaja)}).`, {
+              ventaja,
+              de: (opts.emisoras ?? []).join(","),
+            });
+          }
+        }
+        if (opts.lexico && oidoRegistro) {
+          for (const k of new Set(oidoRegistro.simbolos)) {
+            registrarConsecuencia(opts.lexico, k, {
+              accion: a.type,
+              r: out.reward,
+              cambioDeIdea,
+              comio: a === EAT_ACTION && out.success,
+              seFue: a.type === "mudarse" || a.type === "explorar",
+            });
+          }
+        }
+      }
 
       // creencia sobre (objetivo, verbo): lo que el mundo le hizo, sin la curiosidad
       if (a.type !== REST_ACTION.type) actualizarCreencia(c.creencias, claveCreencia(a.target, a.type), out.reward, nowIso);
@@ -300,6 +415,7 @@ export async function runTick(c: CriaturaDoc, red: Red, opts: TickOpts): Promise
         sorpresa,
         rTotal,
         candidatas: cands.map((k, j) => ({ accion: k.type, objetivo: k.target, label: k.label, q: round3(el.qs[j]) })),
+        simbolo,
         ms: Date.now() - ts,
       });
       c.stats.pasos += 1;
@@ -376,7 +492,7 @@ export async function runTick(c: CriaturaDoc, red: Red, opts: TickOpts): Promise
       sorpresa: p.sorpresa,
       pExito: p.pExito,
       candidatas: p.candidatas,
-      simbolo: null,
+      simbolo: p.simbolo,
       tags: p.out.tags.slice(0, 6),
       ms: p.ms,
     }));
@@ -386,6 +502,8 @@ export async function runTick(c: CriaturaDoc, red: Red, opts: TickOpts): Promise
       env: envId,
       zona,
       pasos: registro,
+      oido: oidoRegistro,
+      social: round3(social),
       perdida: round3(perdida),
       gradiente: round3(normaMedia),
       activacion,
@@ -395,7 +513,14 @@ export async function runTick(c: CriaturaDoc, red: Red, opts: TickOpts): Promise
     c.ultimoTick = ultimo;
   }
 
-  return { seq, eventos, perdida, pasosGradiente, ms: Date.now() - t0, error };
+  return { seq, eventos, emitidas, ventajas, perdida, pasosGradiente, ms: Date.now() - t0, error };
+}
+
+/** Entrada de la red cuantizada a int8 en base64 (para recordar qué vio al emitir). */
+function cuantizar(x: Float32Array): string {
+  const q = new Int8Array(x.length);
+  for (let i = 0; i < x.length; i++) q[i] = Math.round(clamp(x[i], -1, 1) * 127);
+  return int8ABase64(q);
 }
 
 /** Texto corto de dónde está: "el arroyo (El bosque)". */

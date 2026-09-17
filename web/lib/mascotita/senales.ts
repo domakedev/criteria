@@ -6,7 +6,7 @@
 // ni el riesgo estimado por el entorno ni las probabilidades ocultas.
 import { RED } from "./config";
 import { hashString } from "./rng";
-import type { Creencia, CriaturaDoc } from "./types";
+import type { Creencia, CriaturaDoc, Senal } from "./types";
 
 /** Bloques del vector de entrada: [inicio, fin). */
 export const BLOQUES = {
@@ -184,4 +184,32 @@ export function zonaRepo(path: string | null): string {
   if (!path) return "raiz";
   const i = path.indexOf("/");
   return i < 0 ? "raiz" : path.slice(0, i);
+}
+
+/** Resume las señales de una zona en lo que oye `c` (sin las suyas); null si no hay nada. */
+export function resumirOido(senales: Senal[] | undefined, c: CriaturaDoc, seqActual: number, hijos: Set<string>): Oido | null {
+  if (!senales || senales.length === 0) return null;
+  const conteo = Array.from({ length: SIMBOLOS }, () => 0);
+  let dios = false;
+  let hacePasos = 3;
+  let pariente = false;
+  const emisoras = new Set<string>();
+  for (const s of senales) {
+    if (s.de === c.cid) continue;
+    if (s.sim < 0 || s.sim >= SIMBOLOS) continue;
+    conteo[s.sim] += 1;
+    emisoras.add(s.de);
+    if (s.dios) dios = true;
+    hacePasos = Math.min(hacePasos, Math.max(0, seqActual - s.seq));
+    if (s.de === c.padre || hijos.has(s.de)) pariente = true;
+  }
+  if (emisoras.size === 0) return null;
+  return { conteo, dios, hacePasos, emisoras: emisoras.size, pariente };
+}
+
+/** Quiénes emitieron (cids y "dios") en una lista de señales, sin `yo`. */
+export function emisorasDe(senales: Senal[] | undefined, yo: string): string[] {
+  const out: string[] = [];
+  for (const s of senales ?? []) if (s.de !== yo && !out.includes(s.de)) out.push(s.de);
+  return out;
 }

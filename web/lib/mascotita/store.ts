@@ -2,7 +2,7 @@
 // aquí. Dos implementaciones con la misma API: Firestore (producción) y
 // memoria (prueba de humo, sin red). Cada implementación cuenta sus lecturas
 // y escrituras para que el latido las sume al presupuesto del día.
-import type { CerebroDoc, CriaturaDoc, CronicaDoc, LinajeDoc, MundoDoc, RepoTreeCache } from "./types";
+import type { CerebroDoc, CriaturaDoc, CronicaDoc, LexicoDoc, LinajeDoc, MundoDoc, RepoTreeCache } from "./types";
 
 export interface Contadores {
   lecturas: number;
@@ -43,6 +43,9 @@ export interface Store {
 
   getLinaje(): Promise<LinajeDoc | null>;
   guardarLinaje(doc: LinajeDoc): Promise<void>;
+
+  getLexico(): Promise<LexicoDoc | null>;
+  guardarLexico(doc: LexicoDoc): Promise<void>;
 
   getRepoTree(): Promise<RepoTreeCache | null>;
   guardarRepoTree(c: RepoTreeCache): Promise<void>;

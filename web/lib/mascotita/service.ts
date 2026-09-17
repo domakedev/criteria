@@ -1,6 +1,6 @@
 // Operaciones de la colonia que no son un latido: el estado para la página,
 // fundar (nace la primera criatura), borrar todo.
-import { LIMITES, cfg } from "./config";
+import { LENGUAJE, LIMITES, cfg } from "./config";
 import * as C from "./cognition";
 import { cerebroDoc, cerebroNuevo } from "./cerebro";
 import { agregarEventos, cronicaVacia, evento } from "./cronica";
@@ -11,8 +11,9 @@ import { mundoNuevo, rotarDia } from "./latido";
 import { seededRng } from "./rng";
 import { presupuestoVista } from "./presupuesto";
 import { criaturaVista, fotoDe, limitesVista } from "./vistas";
-import { anotarLinaje, linajeVacio } from "./sociedad";
-import type { CriaturaView, LinajeDoc, MundoView } from "./types";
+import { anotarLinaje, claveZona, linajeVacio } from "./sociedad";
+import { lexicoVacio, lexicoVista, registrarEmision, silaba } from "./lexico";
+import type { CriaturaView, LexicoView, LinajeDoc, MundoView, Senal } from "./types";
 
 const MIN_MS = 60_000;
 
@@ -129,4 +130,56 @@ export async function borrarTodo(): Promise<void> {
     throw new MascotitaError("La colonia está latiendo ahora mismo; espera a que termine.", 409, mundo.latido.lock.until);
   }
   await store.borrarColonia();
+}
+
+export async function getLexico(): Promise<LexicoView> {
+  const l = (await getStore().getLexico()) ?? lexicoVacio(new Date().toISOString());
+  return lexicoVista(l);
+}
+
+/**
+ * El dios habla: deja 1-3 símbolos en una zona. Las criaturas los procesan en
+ * su siguiente tick como cualquier otra señal (con el bit "dios" encendido).
+ * Queda en la crónica y en el léxico como emisión tuya.
+ */
+export async function decir(uid: string, envId: string, zona: string, simbolos: number[]): Promise<{ ok: true; zona: string }> {
+  const env = getEnvironment(envId);
+  if (!env) throw new MascotitaError("Ese lugar no existe.", 400);
+  if (!env.zonas().some((z) => z.id === zona)) throw new MascotitaError("Esa zona no existe.", 400);
+  const sims = simbolos.filter((s) => Number.isInteger(s) && s >= 0 && s < LIMITES.simbolos).slice(0, LENGUAJE.maxDios);
+  if (sims.length === 0) throw new MascotitaError("Elige al menos un símbolo.", 400);
+  const store = getStore();
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const dayKey = C.limaDayKey(now);
+  const mundo = await store.getMundo();
+  if (!mundo) throw new MascotitaError("Todavía no hay colonia.", 404);
+  if (mundo.latido.lock && Date.parse(mundo.latido.lock.until) > now.getTime()) {
+    throw new MascotitaError("La colonia está latiendo; habla en unos segundos.", 409, mundo.latido.lock.until);
+  }
+  const k = claveZona(envId, zona);
+  const lista: Senal[] = mundo.senales[k] ?? [];
+  for (const sim of sims) lista.push({ de: "dios", sim, seq: mundo.latido.seq, dios: true });
+  mundo.senales[k] = lista.slice(-LENGUAJE.senalesPorZona);
+  mundo.updatedAt = nowIso;
+  const lexico = (await store.getLexico()) ?? lexicoVacio(nowIso);
+  const comida = mundo.recursos[k]?.comida ?? 0;
+  let otras = 0;
+  for (const f of Object.values(mundo.fotos)) if (f.viva && f.env === envId && f.zona === zona) otras += 1;
+  sims.forEach((sim, i) => {
+    registrarEmision(lexico, sim, { env: envId, zona, objetos: [], comida, energia: 1, golpeReciente: false, otras, comio: false }, i > 0 ? sims[i - 1] : null);
+  });
+  const cronica = (await store.getCronica(dayKey)) ?? cronicaVacia(dayKey);
+  agregarEventos(cronica, [
+    evento(nowIso, "dios", null, `El dios dijo ${sims.map((x) => `«${silaba(x)}»`).join(" ")} en ${nombreZona(envId, zona)} (${env.name}), con ${otras} criatura${otras === 1 ? "" : "s"} cerca.`, {
+      dios: uid,
+      env: envId,
+      zona,
+      simbolos: sims.join(","),
+    }),
+  ]);
+  await store.guardarLexico(lexico);
+  await store.guardarCronica(cronica);
+  await store.guardarMundo(mundo);
+  return { ok: true, zona: k };
 }

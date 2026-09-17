@@ -156,6 +156,7 @@ export function nuevaCriatura(p: {
     skills: {},
     creencias: {},
     memorias: memoriasVacias(),
+    emisiones: [],
     stats: statsVacias(),
     ultimoTick: null,
     seq: 0,

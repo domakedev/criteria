@@ -8,7 +8,8 @@
 //   colonia/{id}/criaturas/{cid}         → CriaturaDoc (estado, genes, creencias, memorias)
 //   colonia/{id}/cerebros/{cid}          → CerebroDoc (pesos de la red, base64 float32)
 //   colonia/{id}/cronica/{YYYY-MM-DD}    → CronicaDoc (eventos del día)
-//   colonia/{id}/linaje                  → LinajeDoc (árbol genealógico)
+//   colonia/{id}/meta/linaje             → LinajeDoc (árbol genealógico)
+//   colonia/{id}/meta/lexico             → LexicoDoc (conteos del intérprete)
 //   mascotita_cache/repoTree             → RepoTreeCache (compartido, 1 fetch/día)
 
 // --- personalidad, ánimo, impulsos ---
@@ -143,12 +144,23 @@ export interface PasoRegistro {
   ms: number;
 }
 
+export interface OidoRegistro {
+  /** símbolos oídos (0..15), con repetición */
+  simbolos: number[];
+  /** de quiénes (cids o "dios") */
+  de: string[];
+}
+
 export interface UltimoTick {
   seq: number;
   at: string;
   env: string;
   zona: string;
   pasos: PasoRegistro[];
+  /** lo que oyó antes de decidir, si algo */
+  oido: OidoRegistro | null;
+  /** recompensa social recibida por sus emisiones del tick anterior */
+  social: number;
   /** pérdida media de los pasos de gradiente de este tick */
   perdida: number;
   /** norma media del gradiente (antes del recorte) */
@@ -212,6 +224,8 @@ export interface CriaturaDoc {
   /** "objetivo|verbo" → creencia; ≤ tope */
   creencias: Record<string, Creencia>;
   memorias: MemoriasDoc;
+  /** emisiones del último tick a la espera de su recompensa social (entrada cuantizada + símbolo) */
+  emisiones: EmisionPendiente[];
   stats: CriaturaStats;
   ultimoTick: UltimoTick | null;
   /** Secuencia de ticks: el tick N usa RNG sembrado con (cid, N) → reintentos idempotentes. */
@@ -308,6 +322,61 @@ export interface MundoDoc {
   rotacion: { cursor: number };
   createdAt: string;
   updatedAt: string;
+}
+
+/** Una emisión esperando su recompensa social: la entrada de la red (int8 base64) y el símbolo elegido. */
+export interface EmisionPendiente {
+  x: string;
+  sim: number;
+}
+
+// --- léxico ---
+
+export interface LexicoDoc {
+  emisiones: number;
+  oidas: number;
+  porSimbolo: number[];
+  /** cuántas veces se oyó cada símbolo (para las fracciones de consecuencia) */
+  oidasPorSimbolo: number[];
+  /** símbolo → clave de contexto → n */
+  contexto: Record<string, Record<string, number>>;
+  totContexto: Record<string, number>;
+  /** símbolo → clave de consecuencia (en quien oye) → n */
+  consecuencia: Record<string, Record<string, number>>;
+  totConsecuencia: Record<string, number>;
+  bigramas: Record<string, number>;
+  resumen: { bitsContexto: number; bitsConsecuencia: number; at: string; emisionesDia: number; diaKey: string };
+  updatedAt: string;
+}
+
+export interface PistaView {
+  clave: string;
+  humano: string;
+  n: number;
+  frac: number;
+  pmi: number;
+}
+
+export interface GlosaView {
+  simbolo: number;
+  silaba: string;
+  n: number;
+  texto: string;
+  contexto: PistaView[];
+  consecuencia: PistaView[];
+}
+
+export interface LexicoView {
+  emisiones: number;
+  oidas: number;
+  emisionesHoy: number;
+  bitsContexto: number;
+  bitsConsecuencia: number;
+  lecturaContexto: string;
+  lecturaConsecuencia: string;
+  glosas: GlosaView[];
+  bigramas: Array<{ bigrama: string; n: number }>;
+  at: string;
 }
 
 // --- linaje ---

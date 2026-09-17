@@ -15,6 +15,7 @@ import { latir } from "../lib/mascotita/latido";
 import { fundar } from "../lib/mascotita/service";
 import { LIMITES, RED, SOCIEDAD } from "../lib/mascotita/config";
 import { topeSeguro } from "../lib/mascotita/presupuesto";
+import { lexicoVista } from "../lib/mascotita/lexico";
 import { cargarCerebro } from "../lib/mascotita/cerebro";
 import { ENVIRONMENTS, type Environment } from "../lib/mascotita/envs";
 import { fromData, type ImaginedEnvSpec } from "../lib/mascotita/envs/imagined";
@@ -421,6 +422,19 @@ async function escenarioSociedad(): Promise<void> {
   console.log(`  escrituras máximas en un día: ${escriturasMaxDia} (tope seguro ${topeSeguro()}) · comida: ${Object.entries(m.recursos).map(([k, r]) => `${k} ${r.comida}`).join(" · ")}`);
   const comidas = [...store.criaturas.values()].reduce((a, x) => a + x.stats.comidas, 0);
   console.log(`  comidas totales ${comidas} · vivas ahora: ${vivas.map((x) => `${x.nombre} g${x.gen} e${x.drives.energy} ${x.env}/${x.zona}`).join(" · ")}`);
+  // lenguaje: el canal funciona; si significa algo, lo dicen los bits (y se dice tal cual)
+  const lex = store.lexico ? lexicoVista(store.lexico) : null;
+  const emisiones = [...store.criaturas.values()].reduce((a, x) => a + x.stats.emisiones, 0);
+  const oidas = [...store.criaturas.values()].reduce((a, x) => a + x.stats.oidas, 0);
+  const senalesCronica = [...store.cronicas.values()].reduce((a, d) => a + d.eventos.filter((e) => e.tipo === "senal").length, 0);
+  console.log(`  lenguaje: emisiones ${emisiones} · ticks con algo oído ${oidas} · cambios de idea con ventaja notable ${senalesCronica}`);
+  if (lex) {
+    console.log(`  léxico: ${lex.emisiones} emisiones registradas · ${lex.oidas} consecuencias · bits contexto ${lex.bitsContexto} (${lex.lecturaContexto}) · bits consecuencia ${lex.bitsConsecuencia} (${lex.lecturaConsecuencia})`);
+    for (const g of lex.glosas.slice(0, 3)) console.log(`    ${g.texto}`);
+    console.log(`  emisiones por criatura en los últimos ticks: ${vivas.map((x) => `${x.nombre} ${x.ultimoTick?.pasos.filter((p) => p.simbolo !== null).length ?? 0}/${x.ultimoTick?.pasos.length ?? 0}`).join(" · ")}`);
+  }
+  check(emisiones > 0 && lex !== null && lex.emisiones > 0, "el canal de símbolos funciona (hubo emisiones registradas)");
+  check(oidas > 0 && (lex?.oidas ?? 0) > 0, "hubo criaturas que oyeron y el léxico registró consecuencias");
   check(m.poblacion.nacidas >= 1, "hubo al menos un nacimiento");
   check(m.poblacion.muertas >= 1, "hubo al menos una muerte");
   check(maxVivas <= LIMITES.maxVivas, `nunca hubo más de ${LIMITES.maxVivas} vivas (pico ${maxVivas})`);
