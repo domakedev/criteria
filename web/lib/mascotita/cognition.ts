@@ -1023,6 +1023,21 @@ export function envNameInSentence(name: string): string {
   return name.length > 0 ? name.charAt(0).toLowerCase() + name.slice(1) : name;
 }
 
+/**
+ * Retoques de español sobre el texto ya armado con plantillas: contracciones
+ * ("a el bosque" → "al bosque") y mayúscula al empezar una frase, que los
+ * nombres de entorno en minúscula se comen.
+ */
+export function polish(text: string): string {
+  return text
+    .replace(/\b([Aa]) el\b/g, (_m, a: string) => (a === "A" ? "Al" : "al"))
+    .replace(/\b([Dd]e) el\b/g, (_m, d: string) => (d === "De" ? "Del" : "del"))
+    .replace(
+      /(^|[.!?]\s+)([¡¿]?)([a-záéíóúñ])/g,
+      (_m, pre: string, open: string, ch: string) => pre + open + ch.toUpperCase(),
+    );
+}
+
 export function selfView(pet: PetDoc, envName: string, now: string): SelfView {
   return {
     name: pet.name,
@@ -1401,9 +1416,9 @@ export function templateEntry(
     }
   }
 
-  const title = pick(rng, titles).slice(0, 80);
+  const title = polish(pick(rng, titles)).slice(0, 80);
   const body = pick(rng, texts);
   const tail = pick(rng, MOOD_TAIL[pet.mood.word] ?? MOOD_TAIL.curiosa);
-  const text = `${body} ${tail}`.replace(/\s+/g, " ").trim().slice(0, 600);
+  const text = polish(`${body} ${tail}`.replace(/\s+/g, " ").trim()).slice(0, 600);
   return { title, text };
 }

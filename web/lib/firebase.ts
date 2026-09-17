@@ -13,9 +13,30 @@ const config = {
 
 export const firebaseEnabled = !!config.apiKey && !!config.projectId;
 
+/**
+ * Emulador de Auth para pruebas locales (`firebase emulators:start`). Si la
+ * variable está definida, el cliente habla con el emulador en vez de con
+ * Firebase real — así se puede probar la app entera sin crear un proyecto.
+ * En producción no se define y todo funciona igual que siempre.
+ */
+const authEmulator = process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ?? "";
+
 export function firebaseApp(): FirebaseApp {
   if (!firebaseEnabled) throw new Error("Firebase no está configurado");
   return getApps()[0] ?? initializeApp(config);
+}
+
+let emulatorReady = false;
+
+/** getAuth() con el emulador enchufado la primera vez, si toca. */
+export async function firebaseAuth() {
+  const { getAuth, connectAuthEmulator } = await import("firebase/auth");
+  const auth = getAuth(firebaseApp());
+  if (authEmulator && !emulatorReady) {
+    emulatorReady = true;
+    connectAuthEmulator(auth, `http://${authEmulator}`, { disableWarnings: true });
+  }
+  return auth;
 }
 
 /**
@@ -24,7 +45,6 @@ export function firebaseApp(): FirebaseApp {
  */
 export async function idToken(): Promise<string | null> {
   if (!firebaseEnabled) return null;
-  const { getAuth } = await import("firebase/auth");
-  const user = getAuth(firebaseApp()).currentUser;
+  const user = (await firebaseAuth()).currentUser;
   return user ? user.getIdToken() : null;
 }

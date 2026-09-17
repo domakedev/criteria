@@ -3,7 +3,7 @@
 // Sesión con Firebase Auth (Google). Un solo hook para toda la app.
 import { useEffect, useState } from "react";
 import type { User } from "firebase/auth";
-import { firebaseApp, firebaseEnabled } from "@/lib/firebase";
+import { firebaseAuth, firebaseEnabled } from "@/lib/firebase";
 
 export interface Session {
   /** null = sin sesión; undefined = todavía cargando. */
@@ -20,8 +20,8 @@ export function useSession(): Session {
     if (!firebaseEnabled) return;
     let unsub = () => {};
     (async () => {
-      const { getAuth, onAuthStateChanged } = await import("firebase/auth");
-      unsub = onAuthStateChanged(getAuth(firebaseApp()), (u) => setUser(u));
+      const { onAuthStateChanged } = await import("firebase/auth");
+      unsub = onAuthStateChanged(await firebaseAuth(), (u) => setUser(u));
     })();
     return () => unsub();
   }, []);
@@ -30,15 +30,13 @@ export function useSession(): Session {
 }
 
 export async function loginWithGoogle(): Promise<void> {
-  const { getAuth, GoogleAuthProvider, signInWithPopup } = await import(
-    "firebase/auth"
-  );
-  await signInWithPopup(getAuth(firebaseApp()), new GoogleAuthProvider());
+  const { GoogleAuthProvider, signInWithPopup } = await import("firebase/auth");
+  await signInWithPopup(await firebaseAuth(), new GoogleAuthProvider());
 }
 
 export async function loginWithEmail(email: string, password: string): Promise<void> {
-  const { getAuth, signInWithEmailAndPassword } = await import("firebase/auth");
-  await signInWithEmailAndPassword(getAuth(firebaseApp()), email, password);
+  const { signInWithEmailAndPassword } = await import("firebase/auth");
+  await signInWithEmailAndPassword(await firebaseAuth(), email, password);
 }
 
 export async function registerWithEmail(
@@ -46,11 +44,11 @@ export async function registerWithEmail(
   password: string,
   name: string,
 ): Promise<void> {
-  const { getAuth, createUserWithEmailAndPassword, updateProfile } = await import(
+  const { createUserWithEmailAndPassword, updateProfile } = await import(
     "firebase/auth"
   );
   const cred = await createUserWithEmailAndPassword(
-    getAuth(firebaseApp()),
+    await firebaseAuth(),
     email,
     password,
   );
@@ -65,13 +63,13 @@ export async function registerWithEmail(
 }
 
 export async function resetPassword(email: string): Promise<void> {
-  const { getAuth, sendPasswordResetEmail } = await import("firebase/auth");
-  await sendPasswordResetEmail(getAuth(firebaseApp()), email);
+  const { sendPasswordResetEmail } = await import("firebase/auth");
+  await sendPasswordResetEmail(await firebaseAuth(), email);
 }
 
 export async function logout(): Promise<void> {
-  const { getAuth, signOut } = await import("firebase/auth");
-  await signOut(getAuth(firebaseApp()));
+  const { signOut } = await import("firebase/auth");
+  await signOut(await firebaseAuth());
 }
 
 /** Traduce los códigos de Firebase Auth a mensajes claros en español. */

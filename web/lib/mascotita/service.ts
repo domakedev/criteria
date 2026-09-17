@@ -166,7 +166,7 @@ function moveTemplate(pet: PetDoc, from: string, to: string): { title: string; t
     `¡Mi dueño me trajo a ${to}! Ya me sabía ${from} casi de memoria. Tengo ganas de meter la nariz en todo lo nuevo.`,
     `Mi dueño decidió que hoy tocaba ${to}. Dejo ${from} un tiempo; volveré a verlo con otros ojos.`,
   ];
-  return { title: titles[v], text: texts[v] };
+  return { title: C.polish(titles[v]), text: C.polish(texts[v]) };
 }
 
 export async function markSeen(uid: string): Promise<void> {

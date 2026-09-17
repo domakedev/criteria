@@ -147,6 +147,49 @@ cubre el catch-up al abrir la página. Topes por día (ticks, llamadas a la IA,
 charlas) en `.env.local.example`; sin cambiar nada, el peor caso ronda
 ~60k tokens/día de Gemini Flash.
 
+### Probarla
+
+**En Vercel (lo normal).** Agrega estas variables y vuelve a desplegar; el
+resto (Firebase, `GEMINI_API_KEY`) ya lo usa el proyecto:
+
+| Variable | Valor | Para qué |
+|---|---|---|
+| `MASCOTITA_OWNERS` | tu correo (o tu uid de Firebase) | Solo tú puedes criarla. Vacío = cualquier usuario con sesión. |
+| `CRON_SECRET` | una cadena larga al azar | Autoriza el cron diario que ya declara `vercel.json`. |
+| `GITHUB_TOKEN` | token de solo lectura (opcional, recomendado) | Sin él GitHub limita a 60 peticiones/hora por IP compartida y la mascota "ve" menos del repo. |
+
+El correo funciona si entras con Google (queda verificado); con correo y
+contraseña, usa mejor el **uid** que aparece en Firebase Console →
+Authentication → Users. Luego entra a `/mascotita` — o al menú de tu perfil
+en la app, donde aparece **Mi mascotita** solo si estás en la lista.
+
+**En tu máquina, sin crear nada en Firebase.** Con los emuladores basta:
+
+```bash
+cd web
+npm install
+npx -y firebase-tools emulators:start --project demo-mascotita   # Auth + Firestore
+```
+
+y en otra terminal, con un `.env.local` así:
+
+```bash
+NEXT_PUBLIC_FIREBASE_API_KEY=demo-api-key
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=demo-mascotita
+NEXT_PUBLIC_FIREBASE_APP_ID=1:1:web:1
+NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
+FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
+FIREBASE_SERVICE_ACCOUNT=<json de servicio cualquiera, en base64: los emuladores no lo validan>
+MASCOTITA_BRAIN=simple   # o deja GEMINI_API_KEY para que hable de verdad
+CRON_SECRET=local
+npm run dev              # http://localhost:3000
+```
+
+Crea una cuenta con correo y contraseña (el emulador acepta cualquiera),
+entra a `/mascotita`, ponle nombre y déjala explorar. Para forzar el ciclo
+diario sin esperar: `curl -H "Authorization: Bearer local" http://localhost:3000/api/mascotita/cron`.
+
 **Añadir un entorno imaginado** = agregar un objeto a `IMAGINED` en
 `lib/mascotita/envs/data.ts` (zonas, objetos, verbos, reacciones con su
 probabilidad oculta). Nada más: aparece en el selector.
