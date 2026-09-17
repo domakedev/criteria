@@ -77,8 +77,11 @@ const KNOWN_PATHS = [
   "web/lib/mascotita/config.ts",
   "web/lib/mascotita/cognition.ts",
   "web/lib/mascotita/tick.ts",
+  "web/lib/mascotita/nn.ts",
+  "web/lib/mascotita/cerebro.ts",
+  "web/lib/mascotita/senales.ts",
+  "web/lib/mascotita/latido.ts",
   "web/lib/mascotita/envs/repo.ts",
-  "web/lib/mascotita/brain/gemini.ts",
 ];
 
 // --- memo por tick ---
