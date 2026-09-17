@@ -1,6 +1,6 @@
 # Mascotitas — plan de la sociedad con cerebro propio
 
-Estado: **borrador para aprobación**. Sin código todavía. Cuando lo apruebes (o lo corrijas), se construye por fases y cada fase termina con código + prueba de humo + build + commit + resumen, esperando tu OK antes de la siguiente.
+Estado: **aprobado** (con las decisiones de la sección 14 ya incorporadas). Se construye por fases y cada fase termina con código + prueba de humo + build + commit + resumen, esperando tu OK antes de la siguiente.
 
 Rama: `claude/mascotitas-sociedad-f93fj9`, que parte de `main` (`359e95a`), donde ya está fusionada la primera versión (`5764e22`).
 
@@ -174,7 +174,9 @@ La cría nace en la misma zona con energía 0.5, `gen = padre + 1`, nombre gener
 - Fallos graves: cada paso con recompensa ≤ −0.6 suma `dano += 0.15`; sana 0.01 por tick; muere si `dano ≥ 1`.
 Al morir: ficha marcada, cerebro programado para borrado, crónica, linaje. Sus señales pendientes se descartan.
 
-**Extinción.** Si `vivas == 0`, el latido siguiente hace nacer una **fundadora nueva** (genes 0.5 ± 0.1, cerebro fresco) y lo anota como "génesis". Si prefieres que la extinción sea final y decidirlo tú con un botón, dímelo (pregunta abierta A).
+**Extinción.** Si `vivas == 0`, se extinguieron y punto: no nace nadie solo. Queda el botón "Fundar" del dios (§8) para empezar otra vez cuando tú quieras; la crónica lo registra como intervención tuya.
+
+**Dónde nacen.** La fundadora nace en un entorno y una zona al azar (RNG sembrado). Las crías nacen **junto a la madre** (misma zona): el lenguaje necesita co-presencia, las creencias heredadas hablan de cosas cercanas y la madre solo se reproduce donde hay comida. `config.NACIMIENTO = "junto-a-madre" | "aleatorio"` por si quieres comparar.
 
 **Rasgos.** Se mantiene `driftTraits` con su tirón hacia los genes; los genes ahora mutan entre generaciones, así que lo que se "clava" en un individuo puede moverse en su linaje.
 
@@ -259,8 +261,8 @@ Rutas `POST /api/mascotita/dios/*` (solo dueños, sin tope, todo a la crónica c
 
 - `comida`: `{env, zona, unidades ≤ 20}` → suma a `recursos`.
 - `fuente`: `{env, zona, porHora ∈ [0.1, 2], horas ≤ 168}` → regenera comida hasta un tope de 10 por zona; expira.
-- `abrir`: `{env, zona}` o `{env}` → agrega a `mundo.zonas`. De inicio están abiertas: repo (todo), bosque (claro, arroyo), ciudad (plaza). Cerradas: espesura, cueva, mercado, callejón, biblioteca y el cine entero. Abrirlas es tuyo.
-- `fundar` (solo si `vivas == 0` y elegiste que la extinción sea final): una fundadora nueva.
+- `fundar` (solo si `vivas == 0`): una fundadora nueva, en un lugar al azar.
+- Todo está abierto desde el día uno: cualquier entorno, cualquier zona. No hay ruta "abrir".
 
 La regeneración natural (`config.RECURSOS_NATURALES`) es chica a propósito: arroyo 0.3/h, claro 0.2/h, mercado 0.4/h, tope 4 por zona. Con eso 4-6 criaturas viven sin ti; más de eso necesita tu comida, tus fuentes o migrar al repo. Es el freno "natural" de la población además de los topes.
 
@@ -268,10 +270,10 @@ La regeneración natural (`config.RECURSOS_NATURALES`) es chica a propósito: ar
 
 ## 9. Interfaz "terrario"
 
-Ruta `/mascotita` reescrita. Tono propio, oscuro, sin parecerse al resto de criteria. Sin assets externos (canvas 2D + SVG procedural).
+Ruta `/mascotita` reescrita. Tono propio, sin parecerse al resto de criteria. **Inspiración: Pokémon Esmeralda** (vista cenital de GBA, tiles de 16 px, paleta corta y saturada, cajas de diálogo con borde y esquinas, tipografía pixelada). Inspiración, no copia: todo es procedural (canvas 2D que dibuja sus propios tiles y sprites; sin assets externos, sin nombres ni gráficos de Nintendo).
 
 **Vista principal (canvas, arriba, ocupa la pantalla en móvil):**
-- Cuatro "islas" (entornos) en un mapa oscuro; dentro, las zonas como manchas redondeadas con su nombre en tipografía chica. Zonas cerradas: en gris, con candado; tocar → "abrir".
+- Un mapa de tiles con cuatro regiones (entornos): pasto y árboles para el bosque, adoquín y edificios para la ciudad, butacas y pantalla para el cine, y "circuitos" para el repo; dentro, las zonas como parches con su letrero. Todo abierto.
 - Criaturas como sprites de 14-20 px (forma de semilla con brotes según etapa, color por genes, un patrón de linaje: las de una misma madre comparten la marca). Se mueven con interpolación entre la zona anterior y la actual; al nacer aparecen al lado de la madre con un pulso; al morir se apagan y dejan un puntito por unos segundos.
 - Burbuja con el símbolo cuando emiten (dura ~8 s en tu pantalla, con la sílaba). Comida: puntos ámbar en la zona; fuentes: un anillo que respira.
 - Refresco: `GET /api/mascotita/mundo` cada 20 s (1 lectura). Si `latido.lastAt` tiene más de 25 min, la página dispara el **catch-up** (`POST /api/mascotita/latido` con tu sesión) y lo muestra como "latido manual".
@@ -283,6 +285,7 @@ Ruta `/mascotita` reescrita. Tono propio, oscuro, sin parecerse al resto de crit
 4. **Linaje**: árbol genealógico SVG (generaciones en filas, vivas encendidas, causa de muerte al tocar).
 5. **Recursos**: paleta (comida, fuente, abrir) y el panel de límites: escrituras hoy / tope, proyección, vivas / tope, latidos hoy, último latido, próximo estimado.
 6. **Mente** (al tocar una criatura): energía, edad, etapa, ánimo; genes vs rasgos (reusa `traits-panel`); sus 10 creencias más firmes; su último tick paso a paso con la Q de cada candidata (para que veas *por qué* eligió); lo que oyó; una tira de 24 neuronas de la capa 2 iluminadas según su última activación; su madre y sus crías; botón "hablarle aquí".
+7. **Narrador (Gemini, solo para ti)**: botón "Cuéntame qué pasó" que le pasa a Gemini la crónica, el léxico y las fichas (hechos y números) y te devuelve un resumen en español. Es de una sola vía: lo que escriba se guarda aparte (`colonia/principal/narraciones/{id}`), ninguna criatura lo lee ni lo recibe como señal, y no corrige las glosas del intérprete. Tope diario en `config.ts` (10). Usa `GEMINI_API_KEY` tal cual.
 
 Móvil y escritorio: canvas `100vw × 55vh` en móvil con paneles debajo; en escritorio canvas a la izquierda (60 %) y paneles a la derecha.
 
@@ -318,7 +321,8 @@ Tú configuras en GitHub: secret `CRON_SECRET` (el mismo de Vercel) y variable `
 
 ## 11. Migración y limpieza
 
-- Tu mascota actual (`mascotas/{uid}`) no se puede convertir a red sin trampa (una tabla Q por entorno no es un cerebro). Propongo: la **fundadora** hereda su **nombre, genes y rasgos** actuales; el resto nace de cero. Lo viejo se borra con `DELETE /api/mascotita` (ya existe) cuando tú quieras, no automáticamente (pregunta abierta B).
+- Todo empieza de cero: la fundadora nace nueva. Los datos viejos de `mascotas/{uid}` se borran en la fase 3 (autorizado).
+- **Mudanza a tu máquina o a un servidor propio:** todo es TypeScript dentro de la app Next (red, backprop, latido, intérprete); nada en Python ni en servicios externos. Basta Node ≥ 20 con `next build && next start`, las mismas variables de entorno y algo que llame a `/api/mascotita/cron` cada 15 min (un cron de Linux con `curl`, o la misma Action apuntando a tu servidor). Lo único exclusivo de Vercel es `vercel.json`. La base sigue siendo Firestore; si un día la quieres local, la interfaz `Store` es el único lugar a reimplementar.
 - `.env.local.example` y `web/README.md` (sección Mascotita) se reescriben en la fase 2.
 
 ---
@@ -357,11 +361,11 @@ Total ≈ 20 h de mi trabajo, repartidas en las sesiones que hagan falta. Hasta 
 
 ---
 
-## 14. Preguntas abiertas (contesta con la aprobación)
+## 14. Decisiones tomadas sobre las preguntas abiertas
 
-- **A.** Extinción: ¿génesis automática (mi propuesta) o solo con tu botón "fundar"?
-- **B.** ¿La fundadora hereda nombre/genes/rasgos de tu mascota actual? ¿Borro lo viejo yo en la fase 3 o lo dejas para el botón?
-- **C.** Prueba de humo: la corro con `npx -y tsx scripts/humo.ts` (descarga puntual, como ya hace el README con `firebase-tools`; no se agrega a `package.json`). Alternativa sin descarga: `node --experimental-strip-types` con un hook de resolución de 20 líneas. ¿Cuál prefieres?
-- **D.** `BONO_OYENTE`: 0 por defecto (§6.3). ¿De acuerdo?
-- **E.** Zonas cerradas de inicio (§8): ¿te parece esa lista o prefieres todo abierto desde el día uno?
-- **F.** Orden de fases: tal cual lo pediste, o terrario básico después de la fase 3.
+- **A.** Extinción final; botón "Fundar" para el dios.
+- **B.** Todo desde cero; lo viejo se borra en la fase 3.
+- **C.** Prueba de humo con `npx -y tsx scripts/humo.ts` (descarga puntual, como ya hace el README con `firebase-tools`; nada nuevo en `package.json`).
+- **D.** `BONO_OYENTE = 0`.
+- **E.** Todo abierto desde el día uno; fundadora en lugar aleatorio; crías junto a la madre (`NACIMIENTO` en config).
+- **F.** Orden de fases tal cual. Terrario con estética tipo Pokémon Esmeralda y narrador Gemini (solo lectura para el dueño) en la fase 6.

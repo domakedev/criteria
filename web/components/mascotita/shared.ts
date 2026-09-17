@@ -1,24 +1,17 @@
-// Ayudas compartidas por la página de la mascotita y sus paneles: llamadas
-// que conservan el código HTTP (el tick necesita distinguir 409/429 y leer
+// Ayudas compartidas por la página de la colonia y sus paneles: llamadas que
+// conservan el código HTTP (el latido necesita distinguir 409/429 y leer
 // `retryAt`), etiquetas en español y formato de fechas. Solo tipos de
 // `@/lib/mascotita/types` — nada del servidor entra al cliente.
 import { idToken } from "@/lib/firebase";
-import type {
-  ConceptKind,
-  EnvInfo,
-  LifeStage,
-  MoodWord,
-  TickResult,
-  TraitKey,
-} from "@/lib/mascotita/types";
+import type { EnvInfo, LatidoResult, LifeStage, MoodWord, TraitKey } from "@/lib/mascotita/types";
 
 /** Error de /api/mascotita/* con lo que la UI necesita para reaccionar. */
 export class PetApiError extends Error {
   status: number;
   retryAt: string | null;
-  result: TickResult | null;
+  result: LatidoResult | null;
 
-  constructor(message: string, status: number, retryAt: string | null, result: TickResult | null) {
+  constructor(message: string, status: number, retryAt: string | null, result: LatidoResult | null) {
     super(message);
     this.name = "PetApiError";
     this.status = status;
@@ -27,11 +20,6 @@ export class PetApiError extends Error {
   }
 }
 
-/**
- * Como `api()` de lib/api, pero el error trae `status`, `retryAt` y el
- * `result` del tick saltado. Se usa donde el código HTTP cambia la pantalla
- * (403 → puerta cerrada; 409/429 → esperar).
- */
 export async function petApi<T>(
   path: string,
   init?: { method?: "GET" | "POST" | "DELETE"; body?: unknown },
@@ -47,10 +35,8 @@ export async function petApi<T>(
   });
   const data: Record<string, unknown> = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const result =
-      data.result && typeof data.result === "object" ? (data.result as TickResult) : null;
-    const retryAt =
-      typeof data.retryAt === "string" ? data.retryAt : (result?.retryAt ?? null);
+    const result = data.result && typeof data.result === "object" ? (data.result as LatidoResult) : null;
+    const retryAt = typeof data.retryAt === "string" ? data.retryAt : (result?.retryAt ?? null);
     throw new PetApiError(
       typeof data.error === "string" ? data.error : "Algo salió mal. Intenta de nuevo.",
       res.status,
@@ -75,7 +61,6 @@ export const STAGE_LABEL: Record<LifeStage, string> = {
   sabia: "Sabia",
 };
 
-/** Orden fijo de los rasgos en la UI (solo tipos desde lib/mascotita/types). */
 export const TRAIT_ORDER: TraitKey[] = ["curiosidad", "cautela", "sociabilidad", "juego", "constancia", "orden"];
 
 export const TRAIT_LABEL: Record<TraitKey, string> = {
@@ -87,40 +72,27 @@ export const TRAIT_LABEL: Record<TraitKey, string> = {
   orden: "Orden",
 };
 
-export const KIND_EMOJI: Record<ConceptKind, string> = {
-  cosa: "🧩",
-  lugar: "📍",
-  idea: "💡",
-  regla: "📏",
-  archivo: "📄",
-  persona: "🙂",
-  habito: "🔁",
-  duda: "❓",
-};
-
-/** Tinte del chip de ánimo: cálido si está bien, frío si no. */
+/** Tinte del chip de ánimo (fondo oscuro). */
 export const MOOD_TONE: Record<MoodWord, string> = {
-  alegre: "bg-emerald-100 text-emerald-900",
-  tranquila: "bg-emerald-50 text-emerald-800",
-  curiosa: "bg-sky-100 text-sky-900",
-  inquieta: "bg-amber-100 text-amber-900",
-  aburrida: "bg-stone-100 text-stone-600",
-  asustada: "bg-red-100 text-red-800",
-  triste: "bg-sky-50 text-sky-700",
-  orgullosa: "bg-violet-100 text-violet-900",
+  alegre: "bg-emerald-900/60 text-emerald-200",
+  tranquila: "bg-emerald-900/40 text-emerald-300",
+  curiosa: "bg-sky-900/60 text-sky-200",
+  inquieta: "bg-amber-900/60 text-amber-200",
+  aburrida: "bg-stone-800 text-stone-300",
+  asustada: "bg-red-900/60 text-red-200",
+  triste: "bg-sky-900/40 text-sky-300",
+  orgullosa: "bg-violet-900/60 text-violet-200",
 };
 
 export function envInfoFor(envs: EnvInfo[], id: string): EnvInfo {
-  return envs.find((e) => e.id === id) ?? { id, name: id, emoji: "·", kind: "imaginado", intro: "" };
+  return envs.find((e) => e.id === id) ?? { id, name: id, emoji: "·", kind: "imaginado", intro: "", zonas: [] };
+}
+
+export function zonaNombre(envs: EnvInfo[], envId: string, zona: string): string {
+  return envInfoFor(envs, envId).zonas.find((z) => z.id === zona)?.name ?? zona;
 }
 
 // --- fechas y números ---
-
-export function dateEs(iso: string, opts?: Intl.DateTimeFormatOptions): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("es-PE", opts);
-}
 
 export function timeEs(iso: string): string {
   const d = new Date(iso);
@@ -146,15 +118,12 @@ export function pct(x: number): string {
   return `${Math.round(Math.min(1, Math.max(0, x)) * 100)} %`;
 }
 
-/** Δ con signo y dos decimales: "+0.03" / "−0.02". */
+/** Con signo y dos decimales: "+0.03" / "−0.02". */
 export function signed(x: number, digits = 2): string {
   const v = x.toFixed(digits);
   return x > 0 ? `+${v}` : x < 0 ? `−${v.slice(1)}` : v;
 }
 
-/** "mm:ss" para las cuentas regresivas. */
-export function mmss(seconds: number): string {
-  const s = Math.max(0, Math.floor(seconds));
-  const m = Math.floor(s / 60);
-  return `${String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+export function num(x: number): string {
+  return x.toLocaleString("es-PE");
 }

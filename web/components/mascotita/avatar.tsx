@@ -1,8 +1,19 @@
 // Avatar 100 % procedural (SVG, sin assets): una semillita cuyo color sale de
-// su personalidad, cuyos ojos siguen su ánimo y su energía, y que echa brotes
-// con cada etapa. El huevo es el mismo componente con `pet === null` o
-// etapa "huevo". El fondo cambia con el entorno donde vive.
-import type { LifeStage, PetView } from "@/lib/mascotita/types";
+// sus genes, cuyos ojos siguen su ánimo y su energía, y que echa brotes con
+// cada etapa. El huevo es el mismo componente con etapa "huevo". El fondo
+// cambia con el entorno donde vive. (En la fase 6 este mismo generador pinta
+// los sprites del terrario.)
+import type { Drives, LifeStage, Mood, Traits } from "@/lib/mascotita/types";
+
+export interface AvatarProps {
+  etapa: LifeStage;
+  env: string;
+  rasgos: Traits;
+  mood: Mood;
+  drives: Drives;
+  /** tono 0..360 derivado de los genes */
+  tono: number;
+}
 
 const STAGE_SCALE: Record<LifeStage, number> = {
   huevo: 1,
@@ -19,12 +30,12 @@ export function Avatar({
   size = 160,
   className = "",
 }: {
-  pet: PetView | null;
+  pet: AvatarProps | null;
   /** lado del cuadro (px); el cuadro es fijo para que no salte el layout */
   size?: number;
   className?: string;
 }) {
-  const stage: LifeStage = pet?.stage ?? "huevo";
+  const stage: LifeStage = pet?.etapa ?? "huevo";
   return (
     <div
       className={`shrink-0 overflow-hidden rounded-2xl ${className}`}
@@ -115,9 +126,9 @@ function Egg() {
 
 // --- criatura ---
 
-function Creature({ pet }: { pet: PetView }) {
-  const t = pet.traits;
-  const hue = 150 + 60 * (t.juego - t.cautela);
+function Creature({ pet }: { pet: AvatarProps }) {
+  const t = pet.rasgos;
+  const hue = pet.tono;
   const sat = 55 + 30 * t.curiosidad;
   const body = `hsl(${hue.toFixed(0)} ${sat.toFixed(0)}% 58%)`;
   const dark = `hsl(${hue.toFixed(0)} ${sat.toFixed(0)}% 40%)`;
@@ -132,10 +143,10 @@ function Creature({ pet }: { pet: PetView }) {
   const happy = valence > 0.3;
   const sad = valence < -0.3;
   const blush = word === "alegre" || word === "orgullosa";
-  const scale = STAGE_SCALE[pet.stage];
-  const sprouts = SPROUTS[pet.stage];
-  const flower = pet.stage === "adulta" || pet.stage === "sabia";
-  const halo = pet.stage === "sabia";
+  const scale = STAGE_SCALE[pet.etapa];
+  const sprouts = SPROUTS[pet.etapa];
+  const flower = pet.etapa === "adulta" || pet.etapa === "sabia";
+  const halo = pet.etapa === "sabia";
 
   return (
     <g>

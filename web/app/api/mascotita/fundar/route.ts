@@ -1,18 +1,19 @@
-// POST /api/mascotita/seen — el dueño ya leyó el informe "mientras no
-// estabas"; desde ahora se acumula uno nuevo.
+// POST /api/mascotita/fundar — nace la fundadora (solo si no hay vivas).
 import { NextRequest, NextResponse } from "next/server";
 import { guardMascotita } from "@/lib/mascotita/auth";
-import { markSeen } from "@/lib/mascotita/service";
-import { errorResponse } from "../_lib";
+import { fundar } from "@/lib/mascotita/service";
+import { errorResponse, makeLimiter, tooFast } from "../_lib";
 
 export const dynamic = "force-dynamic";
+
+const limited = makeLimiter(5_000);
 
 export async function POST(req: NextRequest) {
   const g = await guardMascotita(req);
   if ("response" in g) return g.response;
+  if (limited(g.user.uid)) return tooFast();
   try {
-    await markSeen(g.user.uid);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ criatura: await fundar(g.user.uid) });
   } catch (err) {
     return errorResponse(err);
   }

@@ -1,8 +1,9 @@
-// El repositorio: el entorno REAL de la mascotita. Lee archivos de GitHub,
-// sigue imports (que a veces no resuelven), nota commits nuevos y pone a
-// prueba lo que cree buscando la evidencia literal en el archivo. Los 404, los
-// imports externos y los archivos que cambian son fallos y sorpresas de
-// verdad: de ahí sale una cautela que ningún mundo imaginado enseña igual.
+// El repositorio: el entorno REAL de las criaturas. Leen archivos de GitHub,
+// siguen imports (que a veces no resuelven), notan commits nuevos y releen lo
+// que cambió. Los 404, los imports externos y los archivos que cambian son
+// fallos y sorpresas de verdad: de ahí sale una cautela que ningún mundo
+// imaginado enseña igual. La red solo ve señales crudas de cada acción (tokens
+// de la ruta, extensión, profundidad, lo que ella misma vivió ahí antes).
 //
 // Seguridad: solo dos hosts (api.github.com y raw.githubusercontent.com),
 // rutas que DEBEN existir en el árbol cacheado (nada de traversal ni de URLs
@@ -10,10 +11,11 @@
 // presupuesto del tick ANTES de llamar. El árbol se baja a lo sumo una vez por
 // tick (memo por ctx) y a lo sumo una vez al día entre todas las mascotas
 // (caché compartida en Firestore).
-import type { ConceptDoc, EnvCursor, RepoCursor, RepoTreeCache, RepoTreeEntry } from "../types";
+import type { EnvCursor, EnvStateDoc, RepoCursor, RepoTreeCache, RepoTreeEntry } from "../types";
 import type { Action, Environment, EnvContext, Outcome } from "./index";
 import { BOUNDS, CAPS, cfg } from "../config";
 import { pick, round3, shuffle } from "../rng";
+import { zonaRepo } from "../senales";
 import { getRepoTreeCache, saveRepoTreeCache } from "../db";
 
 const API_HOST = "https://api.github.com";
@@ -34,6 +36,8 @@ const RESOLVE_SUFFIXES = ["", ".ts", ".tsx", "/index.ts", ".js"];
 const RELEER_MAX_VISITS = 3;
 const VERIFIED_STALE_DAYS = 7;
 const ROOT_DIR = ".";
+/** Zonas del repo para el mapa: carpetas de primer nivel conocidas. */
+const ZONAS_REPO = ["raiz", "web", "src", "docs", "spec", "interfaces"];
 
 /**
  * Rutas reales del repo que la mascota puede leer aunque GitHub no responda y
@@ -480,6 +484,19 @@ export const repoEnv: Environment = {
     return initRepoCursor();
   },
 
+  zonaDe(state: EnvStateDoc): string {
+    const c = state.cursor;
+    return c.kind === "repo" ? zonaRepo(c.lastRead?.path ?? null) : "raiz";
+  },
+
+  zonas() {
+    return ZONAS_REPO.map((z) => ({ id: z, name: z === "raiz" ? "la raíz" : `${z}/` }));
+  },
+
+  nombreZona(id: string): string {
+    return id === "raiz" ? "la raíz" : `${id}/`;
+  },
+
   async affordances(ctx: EnvContext): Promise<Action[]> {
     const cursor = cursorOf(ctx);
     const tree = await loadTree(ctx);
@@ -491,8 +508,6 @@ export const repoEnv: Environment = {
     // Limpiamos la frontera de rutas que ya no existen o ya se leyeron.
     cursor.frontier = cursor.frontier.filter((p) => paths.has(p) && !cursor.visited[p]).slice(0, CAPS.frontier);
 
-    const revisar: Action[] = [];
-    const probar: Action[] = [];
     const leer: Action[] = [];
     const seguir: Action[] = [];
     const explorar: Action[] = [];
@@ -500,44 +515,6 @@ export const repoEnv: Environment = {
     const cambios: Action[] = [];
 
     if (canFetch) {
-      // revisar(enseñanza): lo que el dueño dijo y apunta a un archivo real.
-      const teachings = ctx.toTest.filter(
-        (c) => c.ref && paths.has(c.ref) && c.evidence && (sizeOf.get(c.ref) ?? 0) <= CAPS.repoFileBytes,
-      );
-      if (teachings.length > 0) {
-        const c = pick(rng, teachings);
-        revisar.push({
-          type: "revisar",
-          target: c.ref!,
-          label: `revisar si "${c.label}" es cierto en ${basename(c.ref!)}`,
-          riskHint: 0.2,
-          costEnergy: 0.12,
-          meta: { conceptId: c.id, taught: true },
-        });
-      }
-
-      // probar(concepto): hipótesis propias con ref + evidence, no verificadas (o rancias).
-      const testable = ctx.concepts.filter(
-        (c) =>
-          !c.toTest &&
-          c.ref &&
-          paths.has(c.ref) &&
-          c.evidence &&
-          (sizeOf.get(c.ref) ?? 0) <= CAPS.repoFileBytes &&
-          (!c.verified || daysBetween(c.lastSeenAt, ctx.now) > VERIFIED_STALE_DAYS),
-      );
-      if (testable.length > 0) {
-        const c = pick(rng, testable);
-        probar.push({
-          type: "probar",
-          target: c.ref!,
-          label: `probar si "${c.label}" sigue en ${basename(c.ref!)}`,
-          riskHint: 0.2,
-          costEnergy: 0.12,
-          meta: { conceptId: c.id },
-        });
-      }
-
       // leer(path): primero la frontera, luego algo no visitado al azar.
       const leerAction = (path: string): Action => ({
         type: "leer",
@@ -569,7 +546,7 @@ export const repoEnv: Environment = {
       }
 
       // releer(path): solo desde joven; archivos leídos pocas veces.
-      if (ctx.pet.stage !== "huevo" && ctx.pet.stage !== "cria") {
+      if (ctx.criatura.etapa !== "huevo" && ctx.criatura.etapa !== "cria") {
         const again = Object.entries(cursor.visited)
           .filter(([p, n]) => n < RELEER_MAX_VISITS && paths.has(p))
           .map(([p]) => p);
@@ -620,7 +597,7 @@ export const repoEnv: Environment = {
       });
     }
 
-    return [...revisar, ...probar, ...leer.slice(0, 1), ...seguir, ...explorar, ...leer.slice(1), ...releer, ...cambios].slice(
+    return [...leer.slice(0, 1), ...seguir, ...explorar, ...leer.slice(1), ...releer, ...cambios].slice(
       0,
       MAX_AFFORDANCES,
     );
@@ -703,69 +680,11 @@ export const repoEnv: Environment = {
         const r = await readFile(ctx, tree, path);
         if (r.kind !== "ok") return failureOutcome(r, path);
         const observation = noteRead(ctx, tree, path, r.text);
-        const about = ctx.concepts.filter((c) => c.ref === path);
-        let reward: number;
-        const tags = ["releer"];
-        if (shaBefore && entry?.h && shaBefore !== entry.h) {
-          reward = 0.3;
-          tags.push("cambio");
-        } else if (about.some((c) => c.confidence < 0.5)) {
-          reward = 0.1;
-        } else if (about.length === 0 || about.every((c) => c.confidence > 0.7)) {
-          reward = -0.1;
-        } else {
-          reward = 0;
-        }
+        const changed = !!(shaBefore && entry?.h && shaBefore !== entry.h);
+        // Releer algo que cambió vale; releer lo mismo de siempre, aburre.
+        const reward = changed ? 0.3 : -0.1;
+        const tags = ["releer", ...(changed ? ["cambio"] : [])];
         return { success: true, reward, observation, tags };
-      }
-
-      case "probar":
-      case "revisar": {
-        const conceptId = typeof a.meta?.conceptId === "string" ? a.meta.conceptId : "";
-        const pool: ConceptDoc[] = a.type === "revisar" ? ctx.toTest : ctx.concepts;
-        const concept = pool.find((c) => c.id === conceptId) ?? ctx.concepts.find((c) => c.id === conceptId) ?? ctx.toTest.find((c) => c.id === conceptId);
-        const path = a.target;
-        if (
-          !concept ||
-          !concept.evidence ||
-          norm(concept.evidence).length < 4 ||
-          concept.ref !== path ||
-          !paths.has(path)
-        ) {
-          return { success: false, reward: -0.1, tags: ["invalido"] };
-        }
-        const r = await readFile(ctx, tree, path);
-        if (r.kind !== "ok") return failureOutcome(r, path);
-        const needle = norm(concept.evidence);
-        const hay = norm(r.text);
-        const idx = needle ? hay.indexOf(needle) : -1;
-        const found = idx >= 0;
-        const result: "confirma" | "contradice" = found ? "confirma" : "contradice";
-        const tags = [a.type === "revisar" ? "revisado" : "probado", found ? "verificado" : "refutado"];
-        cursor.visited[path] = (cursor.visited[path] ?? 0) + 1;
-        capRecord(cursor.visited, CAPS.visited);
-        let observation: Outcome["observation"];
-        if (found) {
-          // Ventana alrededor del hallazgo en el texto ORIGINAL (posiciones
-          // aproximadas: la normalización no cambia mucho las longitudes).
-          const approx = Math.min(r.text.length, Math.round((idx / Math.max(1, hay.length)) * r.text.length));
-          const start = Math.max(0, approx - PROBE_WINDOW_CHARS / 2);
-          const text = r.text.slice(start, start + PROBE_WINDOW_CHARS);
-          observation = { text, hints: extractHints(text), ref: path };
-        }
-        return {
-          success: found,
-          reward: found ? 0.5 : -0.4,
-          ...(observation ? { observation } : {}),
-          tags,
-          verification: {
-            conceptId: concept.id,
-            result,
-            detail: found
-              ? `"${concept.evidence}" aparece en ${path}`
-              : `"${concept.evidence}" ya no aparece en ${path}`,
-          },
-        };
       }
 
       case "verCambios": {
@@ -828,9 +747,6 @@ export const repoEnv: Environment = {
         return typeof a.meta?.unseenFrac === "number" ? a.meta.unseenFrac : 0.5;
       case "releer":
         return 0.4 / (1 + (cursor.visited[a.target] ?? 0));
-      case "probar":
-      case "revisar":
-        return 0.5;
       case "verCambios":
         return 0.6;
       default:

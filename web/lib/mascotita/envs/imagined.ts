@@ -4,13 +4,17 @@
 // recompensas): la mascota no la ve, la descubre probando. Con el RNG sembrado
 // del tick, un reintento reproduce exactamente las mismas tiradas.
 //
-// Aquí no hay LLM: las affordances las arma el servidor, la recompensa la
+// Aquí no hay IA: las affordances las arma el servidor, la recompensa la
 // decide la tabla y la "observación" es texto concreto ("el hongo rojo… te
-// dolió la panza") que el cerebro percibirá después y convertirá en conceptos.
-import type { ConceptKind, Drives, EnvCursor, ImaginedCursor } from "../types";
+// dolió la panza") que va a la crónica; la red solo ve señales crudas.
+import type { Drives, EnvCursor, EnvStateDoc, ImaginedCursor } from "../types";
+
+/** Qué clase de cosa es un objeto (solo descriptivo; la red no lo ve). */
+export type ConceptKind = "cosa" | "lugar" | "idea" | "regla" | "archivo" | "persona" | "habito" | "duda";
 import type { Action, Environment, EnvContext, Outcome } from "./index";
 import { BOUNDS, CAL } from "../config";
 import { clamp01, pick, round3, shuffle } from "../rng";
+import { esDeDia } from "../cognition";
 
 // --- formato de los mundos ---
 
@@ -159,9 +163,9 @@ function initCursorFor(spec: ImaginedEnvSpec): ImaginedCursor {
   };
 }
 
-/** día/noche = clock % 4 < 2 (dos ticks de día, dos de noche) */
-function isDay(cursor: ImaginedCursor): boolean {
-  return ((cursor.clock % 4) + 4) % 4 < 2;
+/** Día entre las 06:00 y las 18:00 de Lima (los mundos viven en la hora real). */
+export function isDayAt(nowIso: string): boolean {
+  return esDeDia(new Date(nowIso));
 }
 
 function visibleObjects(zone: Zone, cursor: ImaginedCursor): ImaginedObject[] {
@@ -210,8 +214,8 @@ export function fromData(spec: ImaginedEnvSpec): Environment {
     return zoneById.get(cursor.zone) ?? spec.zones[0];
   }
 
-  function ambient(cursor: ImaginedCursor, rng: () => number): string {
-    return pick(rng, isDay(cursor) ? spec.ambient.day : spec.ambient.night);
+  function ambient(nowIso: string, rng: () => number): string {
+    return pick(rng, isDayAt(nowIso) ? spec.ambient.day : spec.ambient.night);
   }
 
   /**
@@ -227,7 +231,7 @@ export function fromData(spec: ImaginedEnvSpec): Environment {
     delta: Partial<Drives> | undefined,
   ): Partial<Drives> | undefined {
     if (!delta) return undefined;
-    const d = ctx.pet.drives;
+    const d = ctx.criatura.drives;
     const out: Partial<Drives> = {};
     if (typeof delta.energy === "number") {
       let cost = clamp01(a.costEnergy);
@@ -253,6 +257,19 @@ export function fromData(spec: ImaginedEnvSpec): Environment {
 
     initCursor(): EnvCursor {
       return initCursorFor(spec);
+    },
+
+    zonaDe(state: EnvStateDoc): string {
+      const c = state.cursor;
+      return c.kind === "imaginado" && zoneById.has(c.zone) ? c.zone : spec.zones[0].id;
+    },
+
+    zonas() {
+      return spec.zones.map((z) => ({ id: z.id, name: z.name }));
+    },
+
+    nombreZona(id: string): string {
+      return zoneById.get(id)?.name ?? id;
     },
 
     async affordances(ctx: EnvContext): Promise<Action[]> {
@@ -281,9 +298,10 @@ export function fromData(spec: ImaginedEnvSpec): Environment {
         });
       }
 
-      // Acciones sobre objetos: barajamos con el rng y luego ordenamos por
-      // intentos (estable), así los menos probados van primero pero el
-      // desempate varía de un tick a otro.
+      // Acciones sobre objetos: la mitad del cupo va a las menos probadas
+      // (para que siempre haya algo nuevo que intentar) y la otra mitad se
+      // sortea entre el resto (para que pueda repetir lo que ya sabe que le
+      // gusta). Sin esta mezcla, lo bien conocido desaparecería del menú.
       const objActions: Array<{ a: Action; tries: number }> = [];
       for (const o of visibleObjects(zone, cursor)) {
         const t = triesOf(cursor, o.id);
@@ -305,7 +323,10 @@ export function fromData(spec: ImaginedEnvSpec): Environment {
       }
       const ordered = shuffle(ctx.rng, objActions).sort((x, y) => x.tries - y.tries);
       const room = Math.max(0, MAX_AFFORDANCES - base.length);
-      return base.concat(ordered.slice(0, room).map((x) => x.a)).slice(0, MAX_AFFORDANCES);
+      const nuevas = Math.ceil(room / 2);
+      const elegidas = ordered.slice(0, nuevas);
+      const resto = shuffle(ctx.rng, ordered.slice(nuevas)).slice(0, room - elegidas.length);
+      return base.concat(shuffle(ctx.rng, [...elegidas, ...resto]).map((x) => x.a)).slice(0, MAX_AFFORDANCES);
     },
 
     async act(a: Action, ctx: EnvContext): Promise<Outcome> {
@@ -320,11 +341,11 @@ export function fromData(spec: ImaginedEnvSpec): Environment {
           success: true,
           reward: 0.05,
           observation: {
-            text: clip(`${ambient(cursor, rng)} ${zone.desc} ${listing(seen)}`),
+            text: clip(`${ambient(ctx.now, rng)} ${zone.desc} ${listing(seen)}`),
             hints: seen.map((o) => o.label),
             ref: zone.id,
           },
-          tags: ["observar", isDay(cursor) ? "dia" : "noche"],
+          tags: ["observar", isDayAt(ctx.now) ? "dia" : "noche"],
         };
       }
 
@@ -357,7 +378,7 @@ export function fromData(spec: ImaginedEnvSpec): Environment {
           success: true,
           reward: first ? 0.15 : 0.02,
           observation: {
-            text: clip(`${ambient(cursor, rng)} ${dest.desc} ${listing(seen)}`),
+            text: clip(`${ambient(ctx.now, rng)} ${dest.desc} ${listing(seen)}`),
             hints: [dest.name, ...seen.map((o) => o.label)],
             ref: dest.id,
           },
@@ -372,7 +393,7 @@ export function fromData(spec: ImaginedEnvSpec): Environment {
       if (!verb || !obj || !reaction) {
         return { success: false, reward: -0.1, tags: ["invalido"] };
       }
-      if (reaction.requiresEnergy !== undefined && ctx.pet.drives.energy < reaction.requiresEnergy) {
+      if (reaction.requiresEnergy !== undefined && ctx.criatura.drives.energy < reaction.requiresEnergy) {
         return {
           success: false,
           reward: -0.2,
@@ -387,18 +408,11 @@ export function fromData(spec: ImaginedEnvSpec): Environment {
 
       const novelty = env.noveltyOf(a, ctx);
       const tries = triesOf(cursor, obj.id);
-      const pBelief = (tries.ok + 1) / (tries.ok + tries.fail + 2);
-      const predicted = pBelief >= 0.5;
-      const counted = tries.ok + tries.fail >= CAL.predictionMinTries;
 
       const pEff = clamp01(reaction.p + 0.1 * ctx.competence(verb.id));
       const ok = rng() < pEff;
-      let reward = ok ? reaction.okReward : reaction.failReward;
+      const reward = ok ? reaction.okReward : reaction.failReward;
       const tags = [verb.id, ok ? "ok" : "fallo"];
-      if (counted) {
-        tags.push(predicted === ok ? "prediccion-ok" : "prediccion-fallida");
-        if (predicted === ok) reward += CAL.predictionBonus;
-      }
       if (ok) tries.ok += 1;
       else tries.fail += 1;
       cursor.objectTries[obj.id] = tries;
@@ -415,7 +429,6 @@ export function fromData(spec: ImaginedEnvSpec): Environment {
         },
         ...(effects ? { effects } : {}),
         tags,
-        prediction: { predicted, actual: ok, counted },
       };
     },
 
