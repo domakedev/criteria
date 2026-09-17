@@ -129,7 +129,11 @@ $CRON_SECRET`. Cada latido toma el candado del mundo, tickea a las vivas en
 round-robin (≤ 12 por latido, con plazo por criatura y ≤ 6 fetches al repo
 repartidos), guarda cada una apenas termina y al final el mundo y la crónica.
 La página dispara un latido al abrirse si el último tiene más de 25 min
-(catch-up) y `vercel.json` conserva un cron diario de respaldo.
+(catch-up) y, con **Vigilia** encendida (el botón de la cabecera, por
+defecto sí), sigue latiendo cada 15 min mientras la pestaña esté abierta:
+sirve para vivir sin configurar la Action. `vercel.json` conserva un cron
+diario de respaldo. Sin Action y sin pestaña abierta, la colonia solo late
+una vez al día.
 
 **El terrario.** `/mascotita` es un mapa de tiles (canvas, todo procedural,
 estética de consola de 16 bits) con cuatro regiones: bosque, ciudad, cine y

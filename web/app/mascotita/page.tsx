@@ -37,6 +37,9 @@ const TABS: Array<[Tab, string]> = [
 
 const REFRESH_MS = 20_000;
 const DOS_HORAS = 2 * 60 * 60_000;
+/** en vigilia, la página late cada 15 min (mientras la pestaña siga abierta) */
+const VIGILIA_MS = 15 * 60_000;
+const VIGILIA_KEY = "mascotitas.vigilia";
 
 export default function ColoniaPage() {
   const router = useRouter();
@@ -51,7 +54,29 @@ export default function ColoniaPage() {
   const [msg, setMsg] = useState("");
   const [confirm, setConfirm] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [vigilia, setVigilia] = useState(true);
   const catchupRan = useRef(false);
+  const latiendo = useRef(false);
+
+  // la preferencia de vigilia se recuerda en este navegador
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(VIGILIA_KEY);
+      if (v === "0") setVigilia(false);
+    } catch {
+      // sin localStorage (modo privado): queda encendida
+    }
+  }, []);
+  const toggleVigilia = () => {
+    setVigilia((v) => {
+      try {
+        localStorage.setItem(VIGILIA_KEY, v ? "0" : "1");
+      } catch {
+        // da igual
+      }
+      return !v;
+    });
+  };
 
   useEffect(() => {
     if (enabled && user === null) router.replace("/login");
@@ -90,6 +115,8 @@ export default function ColoniaPage() {
 
   const latir = useCallback(
     async (reason: "manual" | "catchup") => {
+      if (latiendo.current) return;
+      latiendo.current = true;
       setBusy("latir");
       setMsg("");
       try {
@@ -102,6 +129,7 @@ export default function ColoniaPage() {
       } catch (err) {
         setMsg(errorMessage(err));
       } finally {
+        latiendo.current = false;
         setBusy(null);
         await load();
       }
@@ -109,11 +137,21 @@ export default function ColoniaPage() {
     [load],
   );
 
+  // Catch-up al abrir (una vez) y, en vigilia, un latido cada 15 min mientras
+  // la pestaña siga abierta: reemplaza a la GitHub Action si no la configuras.
+  // Con la pestaña en segundo plano el navegador frena los temporizadores a
+  // ~1/min, que para esta cadencia da igual; con la pantalla del celular
+  // apagada, se detiene.
   useEffect(() => {
-    if (status !== "ready" || !m?.atrasado || catchupRan.current) return;
-    catchupRan.current = true;
-    void latir("catchup");
-  }, [status, m, latir]);
+    if (status !== "ready" || !m || m.poblacion.vivas === 0 || m.latido.ocupado) return;
+    const hace = m.latido.lastAt ? Date.now() - Date.parse(m.latido.lastAt) : Infinity;
+    if (!catchupRan.current && m.atrasado) {
+      catchupRan.current = true;
+      void latir("catchup");
+      return;
+    }
+    if (vigilia && hace >= VIGILIA_MS) void latir("catchup");
+  }, [status, m, vigilia, latir]);
 
   // criatura elegida: viva (viene en el mundo) o muerta (se pide aparte)
   const viva = m?.criaturas.find((c) => c.cid === sel.cid) ?? null;
@@ -199,8 +237,15 @@ export default function ColoniaPage() {
         <span>
           ESCRITURAS HOY <b className="tabular-nums">{m.dia.escrituras}</b>/{m.limites.escriturasDia}
         </span>
-        {sinLatido ? <span className="text-[#f5c542]">⚠ sin latido hace más de 2 h: ¿la Action de GitHub sigue activa?</span> : null}
-        <span className="ml-auto flex gap-2">
+        {sinLatido && !vigilia ? <span className="text-[#f5c542]">⚠ sin latido hace más de 2 h: enciende la vigilia o configura la Action</span> : null}
+        <span className="ml-auto flex items-center gap-2">
+          <button
+            onClick={toggleVigilia}
+            className={`boton ${vigilia ? "boton-2" : "boton-3"}`}
+            title="En vigilia, esta pestaña hace latir la colonia cada 15 minutos mientras siga abierta"
+          >
+            {vigilia ? "Vigilia: sí" : "Vigilia: no"}
+          </button>
           {m.poblacion.vivas > 0 ? (
             <button onClick={() => latir("manual")} disabled={busy !== null || m.latido.ocupado} className="boton">
               {busy === "latir" ? "Latiendo…" : "Latir ahora"}
