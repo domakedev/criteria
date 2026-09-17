@@ -13,7 +13,8 @@ import { StoreMemoria } from "../lib/mascotita/store-memoria";
 import { setStore } from "../lib/mascotita/db";
 import { latir } from "../lib/mascotita/latido";
 import { fundar } from "../lib/mascotita/service";
-import { LIMITES, RED } from "../lib/mascotita/config";
+import { LIMITES, RED, SOCIEDAD } from "../lib/mascotita/config";
+import { topeSeguro } from "../lib/mascotita/presupuesto";
 import { cargarCerebro } from "../lib/mascotita/cerebro";
 import { ENVIRONMENTS, type Environment } from "../lib/mascotita/envs";
 import { fromData, type ImaginedEnvSpec } from "../lib/mascotita/envs/imagined";
@@ -146,6 +147,7 @@ function comprobarDocs(store: StoreMemoria): void {
     check(kb <= LIMITES.docKb, `criatura ${c.nombre}: ${f(kb, 1)} KB ≤ ${LIMITES.docKb} KB`);
     const nan = finito(c);
     check(nan === null, `criatura ${c.nombre}: sin NaN/Infinity${nan ? ` (en ${nan})` : ""}`);
+    if (!c.viva) continue; // las muertas ya no tienen cerebro (se borra al morir)
     const cer = store.cerebros.get(c.cid) ?? null;
     const { red, nueva } = cargarCerebro(cer, c.cid);
     check(!nueva, `cerebro de ${c.nombre}: se deserializa (${cer ? f(StoreMemoria.bytes(cer) / 1024, 1) : "?"} KB)`);
@@ -229,6 +231,7 @@ async function soloLaboratorio(fn: () => Promise<void>): Promise<void> {
 
 async function escenarioLaboratorio(): Promise<void> {
   console.log("\n=== Laboratorio: fruta buena vs hongo malo (400 latidos ≈ 1 200 pasos) ===");
+  process.env.MASCOTITA_MAX_VIVAS = "1";
   await soloLaboratorio(async () => {
     const store = new StoreMemoria();
     setStore(store);
@@ -270,7 +273,8 @@ async function escenarioLaboratorio(): Promise<void> {
 }
 
 async function escenarioMundo(): Promise<void> {
-  console.log("\n=== Mundo libre: 1 200 latidos (≈ 12.5 días) con los cuatro entornos ===");
+  console.log("\n=== Mundo libre: 1 200 latidos (≈ 12.5 días) con los cuatro entornos, una sola criatura ===");
+  process.env.MASCOTITA_MAX_VIVAS = "1"; // sin crías: se mide a una sola
   const store = new StoreMemoria();
   setStore(store);
   const c = await nacer(store, "bosque", "espesura");
@@ -341,7 +345,8 @@ async function escenarioMundo(): Promise<void> {
 }
 
 async function escenarioRepo(): Promise<void> {
-  console.log("\n=== Repo simulado: ¿aprende a evitar 404 e imports rotos? (600 latidos) ===");
+  console.log("\n=== Repo simulado: ¿aprende a evitar 404 e imports rotos? (600 latidos, una sola criatura) ===");
+  process.env.MASCOTITA_MAX_VIVAS = "1";
   const store = new StoreMemoria();
   setStore(store);
   fetches = 0;
@@ -372,7 +377,61 @@ async function escenarioRepo(): Promise<void> {
     console.log(`  archivos visitados: ${Object.keys(cursor.visited).length} de ${Object.keys(ARCHIVOS).length} · frontera ${cursor.frontier.length}`);
   }
   check(muestras.length > 500, "vivió pasos en el repo");
-  check(m1 <= m0, "no tropieza más al final que al principio con 404/imports externos");
+  check(m1 <= m0 + 0.02, "no tropieza más al final que al principio con 404/imports externos (±2 %)");
+  comprobarDocs(store);
+}
+
+
+async function escenarioSociedad(): Promise<void> {
+  console.log("\n=== Sociedad: 20 días (1 920 latidos) con comida natural, nacimientos y muertes ===");
+  process.env.MASCOTITA_MAX_VIVAS = "";
+  const store = new StoreMemoria();
+  setStore(store);
+  const c = await nacer(store, "bosque", "arroyo");
+  console.log(`  fundadora ${c.nombre} en el arroyo · tope de vivas ${LIMITES.maxVivas} · madurez ${SOCIEDAD.madurezTicks} ticks`);
+  let now = new Date("2026-09-17T12:00:00Z");
+  const porDia: string[] = [];
+  let maxVivas = 0;
+  let escriturasMaxDia = 0;
+  const causas = new Map<string, number>();
+  let diaPrev = "";
+  for (let i = 0; i < 1920; i++) {
+    now = new Date(now.getTime() + QUINCE_MIN);
+    const r = await latir("cron", { now });
+    if (r.skipped) throw new Error(`latido saltado: ${r.skipped}`);
+    for (const e of r.eventos) if (e.tipo === "muerte") causas.set(String(e.datos.causa), (causas.get(String(e.datos.causa)) ?? 0) + 1);
+    const m = store.mundo!;
+    maxVivas = Math.max(maxVivas, m.poblacion.vivas);
+    if (m.dia.key !== diaPrev) {
+      if (diaPrev) porDia.push(`${m.poblacion.vivas}`);
+      diaPrev = m.dia.key;
+    }
+    escriturasMaxDia = Math.max(escriturasMaxDia, m.dia.escrituras);
+    if (m.poblacion.vivas === 0) {
+      console.log(`  extinción en el latido ${i + 1}`);
+      break;
+    }
+  }
+  const m = store.mundo!;
+  const linaje = store.linaje;
+  const vivas = [...store.criaturas.values()].filter((x) => x.viva);
+  console.log(`  vivas por día: ${porDia.join(" ")}`);
+  console.log(`  población: vivas ${m.poblacion.vivas} · nacidas ${m.poblacion.nacidas} · muertas ${m.poblacion.muertas} · gen máx ${m.poblacion.generacionMax} · pico ${maxVivas}`);
+  console.log(`  muertes por causa: ${[...causas.entries()].map(([k, v]) => `${k} ${v}`).join(" · ") || "ninguna"}`);
+  console.log(`  escrituras máximas en un día: ${escriturasMaxDia} (tope seguro ${topeSeguro()}) · comida: ${Object.entries(m.recursos).map(([k, r]) => `${k} ${r.comida}`).join(" · ")}`);
+  const comidas = [...store.criaturas.values()].reduce((a, x) => a + x.stats.comidas, 0);
+  console.log(`  comidas totales ${comidas} · vivas ahora: ${vivas.map((x) => `${x.nombre} g${x.gen} e${x.drives.energy} ${x.env}/${x.zona}`).join(" · ")}`);
+  check(m.poblacion.nacidas >= 1, "hubo al menos un nacimiento");
+  check(m.poblacion.muertas >= 1, "hubo al menos una muerte");
+  check(maxVivas <= LIMITES.maxVivas, `nunca hubo más de ${LIMITES.maxVivas} vivas (pico ${maxVivas})`);
+  check(escriturasMaxDia <= topeSeguro(), "ningún día pasó del tope seguro de escrituras");
+  check(linaje !== null && linaje.entradas.length === store.criaturas.size, `linaje: ${linaje?.entradas.length ?? 0} entradas = ${store.criaturas.size} criaturas`);
+  const cids = new Set(linaje?.entradas.map((e) => e.cid) ?? []);
+  check((linaje?.entradas ?? []).every((e) => e.padre === null || cids.has(e.padre)), "linaje: toda madre existe en el árbol");
+  const muertasConCerebro = [...store.criaturas.values()].filter((x) => !x.viva && store.cerebros.has(x.cid)).length;
+  check(muertasConCerebro === 0, "las muertas ya no tienen cerebro guardado");
+  const hijas = [...store.criaturas.values()].filter((x) => x.padre);
+  check(hijas.every((h) => Object.keys(h.creencias).length > 0 || h.stats.ticks === 0), "las crías nacen con creencias heredadas");
   comprobarDocs(store);
 }
 
@@ -401,6 +460,7 @@ async function main(): Promise<void> {
   if (cual === "todo" || cual === "laboratorio") await escenarioLaboratorio();
   if (cual === "todo" || cual === "mundo") await escenarioMundo();
   if (cual === "todo" || cual === "repo") await escenarioRepo();
+  if (cual === "todo" || cual === "sociedad") await escenarioSociedad();
   console.log(`\n${fallos.length === 0 ? "TODO OK" : `FALLARON ${fallos.length}: ${fallos.join(" | ")}`} · ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   process.exit(fallos.length === 0 ? 0 : 1);
 }

@@ -105,6 +105,15 @@ export function restOutcome(c: CriaturaDoc): Outcome {
   };
 }
 
+/** Comer lo que hay en la zona (comida natural o del dios); la inyecta el orquestador si hay. */
+export const EAT_ACTION: Action = {
+  type: "comer",
+  target: "comida",
+  label: "comer lo que hay aquí",
+  riskHint: 0,
+  costEnergy: 0.02,
+};
+
 /** Mudarse a otro entorno: la red decide; cuesta energía y no da recompensa inmediata. */
 export function moveAction(envId: string, name: string): Action {
   return {

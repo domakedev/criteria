@@ -10,7 +10,7 @@
 //     reproduce las mismas decisiones.
 //   · No toca la base: recibe la criatura y su red, y devuelve lo que cambió.
 //     El latido (latido.ts) carga y guarda.
-import { CAL, LIMITES, RED } from "./config";
+import { CAL, LIMITES, RED, SOCIEDAD } from "./config";
 import { clamp, clamp01, round3, seededRng } from "./rng";
 import * as C from "./cognition";
 import { Anillo, elegir, entrenar, pExito, retornos, sonar, sorpresaDe, type Experiencia } from "./cerebro";
@@ -21,6 +21,7 @@ import { evento, signo } from "./cronica";
 import { makeDeadline, type Deadline } from "./plazo";
 import {
   DEFAULT_ENV,
+  EAT_ACTION,
   ENVIRONMENTS,
   REST_ACTION,
   getEnvironment,
@@ -33,7 +34,7 @@ import {
   type Environment,
   type Outcome,
 } from "./envs";
-import type { CandidataRegistro, CriaturaDoc, Evento, PasoRegistro, UltimoTick } from "./types";
+import type { CandidataRegistro, CriaturaDoc, Evento, PasoRegistro, Recurso, UltimoTick } from "./types";
 
 const ORDER_ACTIONS = new Set(["releer", "seguir"]);
 const MAX_MUDANZAS = 3;
@@ -46,10 +47,10 @@ export interface TickOpts {
   fetchBudget: { remaining: number };
   /** lo que oyó en su zona desde el último tick (fase 4) */
   oido?: Oido | null;
-  /** otras criaturas en su zona (fase 3) */
+  /** otras criaturas en su zona */
   otras?: number;
-  /** comida a la vista (fase 3) */
-  comida?: number;
+  /** recursos del mundo ("env/zona" → comida); se muta al comer */
+  recursos?: Record<string, Recurso>;
   /** ¿este latido incluye el sueño? */
   esHoraDeSonar?: boolean;
 }
@@ -141,15 +142,18 @@ export async function runTick(c: CriaturaDoc, red: Red, opts: TickOpts): Promise
       now: nowIso,
       competence: (t) => C.competence(c, t),
     };
+    const recursos = opts.recursos ?? {};
+    const comidaAqui = () => recursos[`${envId}/${zona}`]?.comida ?? 0;
     const senales: ContextoSenales = {
       criatura: c,
       env: envId,
       zona,
       esDia: C.esDeDia(now),
-      comida: opts.comida ?? 0,
+      comida: comidaAqui(),
       otras: opts.otras ?? 0,
       oido: opts.oido ?? null,
     };
+    C.applyCompania(c, opts.otras ?? 0);
 
     // --- 2. episodio: K pasos, la red elige ---
     const K = C.stepsFor(c.etapa);
@@ -168,6 +172,8 @@ export async function runTick(c: CriaturaDoc, red: Red, opts: TickOpts): Promise
         cands = [];
       }
       cands.push(REST_ACTION);
+      senales.comida = comidaAqui();
+      if (senales.comida >= 1) cands.push(EAT_ACTION);
       // Mudarse a otro entorno también es una decisión de la red, pero solo al
       // empezar el tick (entre episodios, no a mitad de uno) y cuesta.
       if (i === 0) {
@@ -179,7 +185,7 @@ export async function runTick(c: CriaturaDoc, red: Red, opts: TickOpts): Promise
         }
       }
       const novedad = cands.map((a) => {
-        if (a.type === REST_ACTION.type) return 0;
+        if (a.type === REST_ACTION.type || a === EAT_ACTION) return 0;
         if (a.type === "mudarse") return 1 - Math.min(1, (c.cursores[a.target]?.visits ?? 0) / 10);
         return clamp01(env.noveltyOf(a, ctx));
       });
@@ -193,6 +199,21 @@ export async function runTick(c: CriaturaDoc, red: Red, opts: TickOpts): Promise
       let out: Outcome;
       if (a.type === REST_ACTION.type) {
         out = restOutcome(c);
+      } else if (a === EAT_ACTION) {
+        const r = recursos[`${envId}/${zona}`];
+        if (r && r.comida >= 1) {
+          r.comida = round3(r.comida - 1);
+          c.stats.comidas += 1;
+          out = {
+            success: true,
+            reward: SOCIEDAD.comidaRecompensa,
+            effects: { energy: clamp01(c.drives.energy + SOCIEDAD.comidaEnergia) },
+            tags: ["comida"],
+          };
+          if (c.stats.comidas % 8 === 1) ev("comida", `${nombre} comió en ${nombreZona(envId, zona)} (queda ${r.comida}).`, { queda: r.comida });
+        } else {
+          out = { success: false, reward: -0.05, tags: ["sin-comida"] };
+        }
       } else if (a.type === "mudarse") {
         const dest = getEnvironment(a.target);
         if (dest) {
@@ -224,6 +245,11 @@ export async function runTick(c: CriaturaDoc, red: Red, opts: TickOpts): Promise
         }
       }
       out.reward = clamp(out.reward, -1, 1);
+      // En el repo, la novedad alimenta: leer algo nunca leído (o cambiado) nutre un poco.
+      if (env.kind === "real" && out.success && novedad[idx] >= 0.6 && (a.type === "leer" || a.type === "seguir" || a.type === "releer")) {
+        out.effects = { ...(out.effects ?? {}), energy: clamp01(c.drives.energy + SOCIEDAD.novedadRepoEnergia) };
+        out.tags = [...out.tags, "nutre"];
+      }
 
       // efectos en el cuerpo
       C.applyStepEnergy(c, a, out.success, novedad[idx]);

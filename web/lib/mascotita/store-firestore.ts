@@ -11,12 +11,13 @@
 //   colonia/{id}/criaturas/{cid}       CriaturaDoc
 //   colonia/{id}/cerebros/{cid}        CerebroDoc
 //   colonia/{id}/cronica/{YYYY-MM-DD}  CronicaDoc
+//   colonia/{id}/meta/linaje           LinajeDoc
 //   mascotita_cache/repoTree           RepoTreeCache
 import type { CollectionReference, DocumentReference, Transaction, WriteBatch } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/admin";
 import { cfg } from "./config";
 import { clean, type Contadores, type LeaseLatido, type Store } from "./store";
-import type { CerebroDoc, CriaturaDoc, CronicaDoc, MundoDoc, RepoTreeCache } from "./types";
+import type { CerebroDoc, CriaturaDoc, CronicaDoc, LinajeDoc, MundoDoc, RepoTreeCache } from "./types";
 
 const COLONIAS = "colonia";
 const CACHE = "mascotita_cache";
@@ -177,6 +178,19 @@ export class StoreFirestore implements Store {
     return snap.docs.map((d) => d.data() as CronicaDoc);
   }
 
+  // --- linaje ---
+
+  async getLinaje(): Promise<LinajeDoc | null> {
+    this.cont.lecturas += 1;
+    const snap = await this.sub("meta").doc("linaje").get();
+    return snap.exists ? (snap.data() as LinajeDoc) : null;
+  }
+
+  async guardarLinaje(doc: LinajeDoc): Promise<void> {
+    this.cont.escrituras += 1;
+    await this.sub("meta").doc("linaje").set(clean(doc));
+  }
+
   // --- caché compartida ---
 
   async getRepoTree(): Promise<RepoTreeCache | null> {
@@ -193,8 +207,20 @@ export class StoreFirestore implements Store {
   // --- borrar ---
 
   async borrarColonia(): Promise<void> {
-    for (const name of ["criaturas", "cerebros", "cronica"]) await this.deleteCollection(this.sub(name));
+    for (const name of ["criaturas", "cerebros", "cronica", "meta"]) await this.deleteCollection(this.sub(name));
     this.cont.escrituras += 1;
     await this.mundoRef().delete();
+  }
+
+  async borrarMascotaVieja(uid: string): Promise<void> {
+    const ref = adminDb().collection("mascotas").doc(uid);
+    this.cont.lecturas += 1;
+    const snap = await ref.get();
+    if (!snap.exists) return;
+    for (const name of ["conocimiento", "memorias", "diario", "charlas", "entornos", "ticks"]) {
+      await this.deleteCollection(ref.collection(name));
+    }
+    this.cont.escrituras += 1;
+    await ref.delete();
   }
 }

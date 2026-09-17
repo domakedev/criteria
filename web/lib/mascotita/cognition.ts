@@ -293,7 +293,7 @@ export function applyStepEnergy(
   const d = c.drives;
   let cost = clamp01(a.costEnergy);
   if (a.riskHint > 0.5 && !success) cost += CAL.energyRisky;
-  d.energy = round3(clamp01(d.energy - cost));
+  d.energy = round3(clamp01(d.energy - cost * CAL.energiaEscala));
   if (novelty > 0.5) d.boredom = round3(clamp01(d.boredom - CAL.boredomNoveltyRelief));
 }
 
@@ -305,6 +305,11 @@ export function applyEffects(c: CriaturaDoc, effects: Partial<Drives> | undefine
     const v = effects[k];
     if (typeof v === "number" && Number.isFinite(v)) d[k] = round3(clamp01(v));
   }
+}
+
+/** Compañía en la zona: la soledad baja. */
+export function applyCompania(c: CriaturaDoc, otras: number): void {
+  if (otras > 0) c.drives.loneliness = round3(clamp01(c.drives.loneliness - CAL.soledadCompania));
 }
 
 /** Daño por fallo grave; sana un poco cada tick. */

@@ -73,6 +73,8 @@ export const LIMITES = {
   simbolos: 16,
   /** fotos de criaturas en el mundo (vivas + muertas recientes) */
   fotos: 40,
+  /** entradas del árbol genealógico */
+  linaje: 600,
   traitHistory: 60,
   /** tamaño máximo esperado de un doc de criatura (para la prueba de humo) */
   docKb: 200,
@@ -121,6 +123,42 @@ export const RED = {
   creenciasHeredadas: 12,
 } as const;
 
+/** Reglas de la sociedad: comida, reproducción y muerte. */
+export const SOCIEDAD = {
+  /** ticks de edad para poder reproducirse (≈ 2 días) */
+  madurezTicks: 200,
+  energiaParaCria: 0.75,
+  /** unidades de comida en la zona que consume el nacimiento */
+  comidaParaCria: 2,
+  ticksEntreCrias: 150,
+  /** energía con la que nace la cría y la que pierde la madre */
+  energiaCria: 0.5,
+  costoCria: 0.4,
+  /** ticks seguidos con energía en cero para morir de hambre (6 h) */
+  hambreMuerteTicks: 24,
+  danoMuerte: 1,
+  /** comer una unidad */
+  comidaEnergia: 0.35,
+  comidaRecompensa: 0.3,
+  /** en el repo, leer algo nuevo alimenta */
+  novedadRepoEnergia: 0.15,
+  /** tope de comida acumulada por zona (natural + fuentes) */
+  comidaTope: 6,
+  /** tope de unidades que el dios deja de una vez */
+  comidaDiosMax: 20,
+  fuenteMaxPorHora: 2,
+  fuenteMaxHoras: 168,
+} as const;
+
+/** Regeneración natural de comida (unidades por hora) por "env/zona". */
+export const RECURSOS_NATURALES: Record<string, number> = {
+  "bosque/arroyo": 0.5,
+  "bosque/claro": 0.3,
+  "ciudad/mercado": 0.5,
+  "ciudad/plaza": 0.2,
+  "cine/lobby": 0.2,
+};
+
 /** Presupuestos de tiempo y tamaño por tick. */
 export const BOUNDS = {
   fetchTimeoutMs: LIMITES.fetchTimeoutMs,
@@ -146,11 +184,15 @@ export const CAL = {
   moodInertia: 0.6,
   arousalInertia: 0.5,
   moodHalfLifeHours: 24,
-  /** energía que recupera por hora sin hacer nada */
-  energyPerHour: 0.15,
+  /** energía que recupera por hora sin hacer nada (casi nada: la comida es lo que alimenta) */
+  energyPerHour: 0.02,
   energyRisky: 0.3,
-  /** lo que da descansar (fase 3: baja a 0.05 cuando exista la comida) */
-  energyRest: 0.4,
+  /** lo que da descansar */
+  energyRest: 0.05,
+  /** factor sobre los costos de energía de las acciones (96 ticks/día; sin esto se morirían en horas) */
+  energiaEscala: 0.12,
+  /** compañía en la zona: cuánto baja la soledad por tick */
+  soledadCompania: 0.1,
   boredomPerHour: 0.04,
   boredomNoveltyRelief: 0.5,
   lonelinessPerHour: 0.03,

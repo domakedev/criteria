@@ -8,6 +8,7 @@
 //   colonia/{id}/criaturas/{cid}         → CriaturaDoc (estado, genes, creencias, memorias)
 //   colonia/{id}/cerebros/{cid}          → CerebroDoc (pesos de la red, base64 float32)
 //   colonia/{id}/cronica/{YYYY-MM-DD}    → CronicaDoc (eventos del día)
+//   colonia/{id}/linaje                  → LinajeDoc (árbol genealógico)
 //   mascotita_cache/repoTree             → RepoTreeCache (compartido, 1 fetch/día)
 
 // --- personalidad, ánimo, impulsos ---
@@ -306,6 +307,25 @@ export interface MundoDoc {
   pendientes: Record<string, number>;
   rotacion: { cursor: number };
   createdAt: string;
+  updatedAt: string;
+}
+
+// --- linaje ---
+
+export interface LinajeEntrada {
+  cid: string;
+  nombre: string;
+  padre: string | null;
+  gen: number;
+  nacio: string;
+  murio: string | null;
+  causa: CausaMuerte | null;
+  /** tono del sprite (para el árbol) */
+  tono: number;
+}
+
+export interface LinajeDoc {
+  entradas: LinajeEntrada[];
   updatedAt: string;
 }
 

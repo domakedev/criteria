@@ -4,7 +4,7 @@
 // que el real, y copia por JSON al leer/escribir para que nadie mute un doc
 // "guardado" por accidente (como pasaría con Firestore).
 import { clean, type Contadores, type LeaseLatido, type Store } from "./store";
-import type { CerebroDoc, CriaturaDoc, CronicaDoc, MundoDoc, RepoTreeCache } from "./types";
+import type { CerebroDoc, CriaturaDoc, CronicaDoc, LinajeDoc, MundoDoc, RepoTreeCache } from "./types";
 
 export class StoreMemoria implements Store {
   readonly id = "memoria" as const;
@@ -14,6 +14,7 @@ export class StoreMemoria implements Store {
   cerebros = new Map<string, CerebroDoc>();
   cronicas = new Map<string, CronicaDoc>();
   repoTree: RepoTreeCache | null = null;
+  linaje: LinajeDoc | null = null;
 
   contadores(): Contadores {
     return { ...this.cont };
@@ -31,6 +32,7 @@ export class StoreMemoria implements Store {
     for (const [k, v] of this.cerebros) s.cerebros.set(k, clean(v));
     for (const [k, v] of this.cronicas) s.cronicas.set(k, clean(v));
     s.repoTree = this.repoTree ? clean(this.repoTree) : null;
+    s.linaje = this.linaje ? clean(this.linaje) : null;
     return s;
   }
 
@@ -128,6 +130,16 @@ export class StoreMemoria implements Store {
     return keys.map((k) => clean(this.cronicas.get(k)!));
   }
 
+  async getLinaje(): Promise<LinajeDoc | null> {
+    this.cont.lecturas += 1;
+    return this.linaje ? clean(this.linaje) : null;
+  }
+
+  async guardarLinaje(doc: LinajeDoc): Promise<void> {
+    this.cont.escrituras += 1;
+    this.linaje = clean(doc);
+  }
+
   async getRepoTree(): Promise<RepoTreeCache | null> {
     this.cont.lecturas += 1;
     return this.repoTree ? clean(this.repoTree) : null;
@@ -144,6 +156,11 @@ export class StoreMemoria implements Store {
     this.criaturas.clear();
     this.cerebros.clear();
     this.cronicas.clear();
+    this.linaje = null;
+  }
+
+  async borrarMascotaVieja(): Promise<void> {
+    // en memoria no hay versión 1 que borrar
   }
 
   /** Tamaño aproximado en bytes de un doc (como lo contaría Firestore, a grandes rasgos). */

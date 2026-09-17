@@ -2,7 +2,7 @@
 // aquí. Dos implementaciones con la misma API: Firestore (producción) y
 // memoria (prueba de humo, sin red). Cada implementación cuenta sus lecturas
 // y escrituras para que el latido las sume al presupuesto del día.
-import type { CerebroDoc, CriaturaDoc, CronicaDoc, MundoDoc, RepoTreeCache } from "./types";
+import type { CerebroDoc, CriaturaDoc, CronicaDoc, LinajeDoc, MundoDoc, RepoTreeCache } from "./types";
 
 export interface Contadores {
   lecturas: number;
@@ -41,11 +41,16 @@ export interface Store {
   /** las últimas `limit` crónicas por clave de día, la más reciente primero */
   listarCronicas(limit: number): Promise<CronicaDoc[]>;
 
+  getLinaje(): Promise<LinajeDoc | null>;
+  guardarLinaje(doc: LinajeDoc): Promise<void>;
+
   getRepoTree(): Promise<RepoTreeCache | null>;
   guardarRepoTree(c: RepoTreeCache): Promise<void>;
 
-  /** Borra la colonia entera (mundo, criaturas, cerebros, crónica). */
+  /** Borra la colonia entera (mundo, criaturas, cerebros, crónica, linaje). */
   borrarColonia(): Promise<void>;
+  /** Borra la mascota de la versión 1 (`mascotas/{uid}` y sus subcolecciones), si existe. */
+  borrarMascotaVieja(uid: string): Promise<void>;
 }
 
 /**

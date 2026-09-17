@@ -236,7 +236,7 @@ export function fromData(spec: ImaginedEnvSpec): Environment {
     if (typeof delta.energy === "number") {
       let cost = clamp01(a.costEnergy);
       if (a.riskHint > 0.5 && !ok) cost += CAL.energyRisky;
-      out.energy = round3(clamp01(d.energy - cost + delta.energy));
+      out.energy = round3(clamp01(d.energy - cost * CAL.energiaEscala + delta.energy));
     }
     if (typeof delta.boredom === "number") {
       const relief = novelty > 0.5 ? CAL.boredomNoveltyRelief : 0;

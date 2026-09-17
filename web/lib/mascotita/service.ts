@@ -11,7 +11,8 @@ import { mundoNuevo, rotarDia } from "./latido";
 import { seededRng } from "./rng";
 import { presupuestoVista } from "./presupuesto";
 import { criaturaVista, fotoDe, limitesVista } from "./vistas";
-import type { CriaturaView, MundoView } from "./types";
+import { anotarLinaje, linajeVacio } from "./sociedad";
+import type { CriaturaView, LinajeDoc, MundoView } from "./types";
 
 const MIN_MS = 60_000;
 
@@ -101,8 +102,24 @@ export async function fundar(uid: string): Promise<CriaturaView> {
     }),
   ]);
   await store.guardarCronica(cronica);
+  const linaje = (await store.getLinaje()) ?? linajeVacio(nowIso);
+  anotarLinaje(linaje, c, nowIso);
+  await store.guardarLinaje(linaje);
   await store.guardarMundo(mundo);
+  // La mascota de la versión 1 (si la hubo) se va: todo empieza de cero.
+  await store.borrarMascotaVieja(uid).catch(() => {});
   return criaturaVista(c, nowIso);
+}
+
+export async function getLinaje(): Promise<LinajeDoc> {
+  return (await getStore().getLinaje()) ?? linajeVacio(new Date().toISOString());
+}
+
+/** Una criatura (viva o muerta) con todo lo que se muestra en la "mente". */
+export async function getCriatura(cid: string): Promise<CriaturaView> {
+  const c = await getStore().getCriatura(cid);
+  if (!c) throw new MascotitaError("Esa criatura no existe.", 404);
+  return criaturaVista(c, new Date().toISOString());
 }
 
 export async function borrarTodo(): Promise<void> {
