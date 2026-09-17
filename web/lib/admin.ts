@@ -32,6 +32,15 @@ function db(): Firestore {
   return getFirestore(adminApp());
 }
 
+/** Acceso compartido para módulos hermanos (p. ej. lib/mascotita): misma app "admin". */
+export function adminDb(): Firestore {
+  return db();
+}
+
+export function adminAuth() {
+  return getAuth(adminApp());
+}
+
 // --- sesión ---
 
 export interface AuthedUser {

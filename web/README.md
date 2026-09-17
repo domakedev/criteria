@@ -102,6 +102,65 @@ O en la configuración de Claude Desktop (u otro cliente MCP por HTTP):
 El token se puede regenerar o revocar en cualquier momento desde la misma
 pestaña; al hacerlo, el anterior deja de funcionar al instante.
 
+## Mascotita (experimento en `/mascotita`)
+
+Una criatura que **vive en el repositorio** y aprende sola, día a día, por
+ensayo y error — inspirada en los *Thronglets* de Black Mirror, pero criada
+por ti. Es un experimento personal: no aparece en la navegación de la app;
+se entra por la URL `/mascotita` con la misma sesión de criteria.
+
+**Qué hace.** Cada "tick" (una vez al día por cron, al abrir la página si
+lleva tiempo dormida, o a mano con *Explorar ahora*) elige un entorno, actúa
+2-3 veces, percibe lo que vio, reflexiona y escribe su diario. El entorno
+real es este repo (lee archivos de GitHub, sigue imports que a veces no
+resuelven, nota commits nuevos, comprueba hipótesis contra el código); los
+imaginados (bosque, ciudad, cine) son mundos definidos como datos en
+`lib/mascotita/envs/data.ts` con reacciones ocultas que solo descubre
+probando. Al volver, la página muestra **"Mientras no estabas"**: qué aprendió,
+qué olvidó, cómo cambió su personalidad — calculado a partir de los números
+guardados, no narrado de memoria.
+
+**Cómo aprende de verdad.** Su "yo" son números en Firestore, no un prompt:
+una política por entorno (bandit con exploración UCB y softmax cuya
+temperatura baja con la madurez), habilidades con conteos, un grafo de
+conceptos con confianza que se refuerza, se contradice y decae (repetición
+espaciada), memorias con saliencia que se consolidan en hábitos o se olvidan,
+seis rasgos de personalidad que derivan con lo que vive, ánimo e impulsos
+(energía, aburrimiento, soledad), y etapas de vida por experiencia. La IA
+(Gemini) es solo un órgano de **percepción** (texto → conceptos) y de
+**lenguaje** (diario, charla): nunca decide acciones ni escribe estado.
+
+**Cambiar de cerebro.** `lib/mascotita/brain/index.ts` define la interfaz
+`Brain` (`perceive` / `reflect` / `speak`, JSON validado). `MASCOTITA_BRAIN`
+elige: `gemini` (default con `GEMINI_API_KEY`), `simple` (determinista, sin
+IA — la mascota vive igual, con menos voz) o `custom` (tu propio modelo
+detrás de `MASCOTITA_BRAIN_URL`, mismo contrato). Los pares entrada→salida de
+cada tick quedan en `mascotas/{uid}/ticks/*` como dataset para entrenarlo.
+
+**Desplegar.** En Vercel agrega `MASCOTITA_OWNERS` (tu correo o uid — si no,
+cualquier usuario con sesión puede criar una) y `CRON_SECRET` (cualquier
+cadena larga); `web/vercel.json` ya declara el cron diario (`09:00 UTC` =
+04:00 en Lima). El plan Hobby permite un cron al día, suficiente: el resto lo
+cubre el catch-up al abrir la página. Topes por día (ticks, llamadas a la IA,
+charlas) en `.env.local.example`; sin cambiar nada, el peor caso ronda
+~60k tokens/día de Gemini Flash.
+
+**Añadir un entorno imaginado** = agregar un objeto a `IMAGINED` en
+`lib/mascotita/envs/data.ts` (zonas, objetos, verbos, reacciones con su
+probabilidad oculta). Nada más: aparece en el selector.
+
+```
+mascotas/{uid}                     estado numérico (rasgos, política, ánimo, contadores, candado)
+mascotas/{uid}/conocimiento/{slug} conceptos con confianza, fuentes, aristas
+mascotas/{uid}/memorias/{id}       episodios con saliencia (se consolidan o se olvidan)
+mascotas/{uid}/diario/{id}         entradas del diario con su delta numérico
+mascotas/{uid}/charlas/{id}        conversación con el dueño
+mascotas/{uid}/entornos/{envId}    cursor por entorno (rutas visitadas, zona, ensayos)
+mascotas/{uid}/ticks/{seq}         log de cada tick + entradas/salidas del cerebro (dataset)
+mascotita_cache/repoTree           árbol del repo (1 fetch/día, compartido)
+mascotita_cache/usage              llamadas a la IA del día (tope global)
+```
+
 ## Datos
 
 ```
