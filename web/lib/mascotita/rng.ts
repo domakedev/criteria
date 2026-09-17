@@ -68,3 +68,17 @@ export function clamp01(x: number): number {
 export function round3(x: number): number {
   return Math.round(x * 1000) / 1000;
 }
+
+/** Normal estándar (Box-Muller) a partir de un rng uniforme. */
+export function gaussian(rng: () => number): number {
+  let u = 0;
+  let v = 0;
+  while (u === 0) u = rng();
+  while (v === 0) v = rng();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+/** Redondeo a dos decimales (para vistas). */
+export function round2(x: number): number {
+  return Math.round(x * 100) / 100;
+}

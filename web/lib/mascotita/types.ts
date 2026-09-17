@@ -1,19 +1,17 @@
-// Tipos de la mascotita — una criatura que vive en un entorno (el repositorio
-// real o mundos imaginados), aprende por ensayo y error y guarda su "yo" como
-// NÚMEROS en Firestore. El cerebro (Gemini hoy, un modelo propio mañana) es
-// solo un órgano de percepción y de lenguaje: nunca es la memoria ni la
-// política. Cambiar de cerebro no cambia quién es la mascota.
+// Tipos de la sociedad de mascotitas: una colonia de criaturas, cada una con
+// su propio cerebro (una red pequeña escrita a mano), que viven en el
+// repositorio real y en mundos imaginados, aprenden solas de lo que les pasa
+// y guardan TODO como números y strings planos en Firestore.
 //
-// Colecciones:
-//   mascotas/{uid}                    → PetDoc (estado numérico, ≤ ~40 KB)
-//   mascotas/{uid}/conocimiento/{slug} → ConceptDoc (≤ 400)
-//   mascotas/{uid}/memorias/{id}       → MemoryDoc (≤ 300)
-//   mascotas/{uid}/diario/{id}         → DiaryEntryDoc (1 doc por entrada)
-//   mascotas/{uid}/charlas/{id}        → ChatDoc (≤ 240)
-//   mascotas/{uid}/entornos/{envId}    → EnvStateDoc (cursor por entorno)
-//   mascotas/{uid}/ticks/{seq6}        → TickDoc (log y dataset, ≤ 60)
-//   mascotita_cache/repoTree           → RepoTreeCache (compartido, 1 fetch/día)
-//   mascotita_cache/usage              → UsageDoc (tope global de LLM por día)
+// Colecciones (ver PLAN.md §3):
+//   colonia/{id}                         → MundoDoc (latido, contadores, fotos, recursos, señales)
+//   colonia/{id}/criaturas/{cid}         → CriaturaDoc (estado, genes, creencias, memorias)
+//   colonia/{id}/cerebros/{cid}          → CerebroDoc (pesos de la red, base64 float32)
+//   colonia/{id}/cronica/{YYYY-MM-DD}    → CronicaDoc (eventos del día)
+//   colonia/{id}/meta/linaje             → LinajeDoc (árbol genealógico)
+//   colonia/{id}/meta/lexico             → LexicoDoc (conteos del intérprete)
+//   colonia/{id}/meta/narraciones        → NarracionesDoc (resúmenes de Gemini para el dueño)
+//   mascotita_cache/repoTree             → RepoTreeCache (compartido, 1 fetch/día)
 
 // --- personalidad, ánimo, impulsos ---
 
@@ -77,247 +75,377 @@ export type LifeStage = "huevo" | "cria" | "joven" | "adulta" | "sabia";
 
 export const LIFE_STAGES: LifeStage[] = ["huevo", "cria", "joven", "adulta", "sabia"];
 
-// --- documento principal ---
+// --- genes ---
 
-export type TickReason = "cron" | "manual" | "catchup";
+/** Lo que se hereda con mutación: rasgos de nacimiento y cuatro genes del cerebro. */
+export interface Genes {
+  rasgos: Traits;
+  /** tasa de aprendizaje de la red */
+  lr: number;
+  /** temperatura base del softmax al elegir */
+  tau: number;
+  /** ruido que reciben los pesos al heredarse */
+  sigma: number;
+  /** vida esperada en ticks (vejez) */
+  vida: number;
+}
 
-export interface PolicyEntry {
-  /** Valor esperado de la acción en ese entorno (−1..1). */
+// --- creencias y memorias ---
+
+/** Lo que la criatura cree de (objetivo, verbo): valor esperado y cuántas veces lo vivió. */
+export interface Creencia {
+  /** −1..1 */
   q: number;
-  /** Veces elegida. */
   n: number;
+  /** ISO de la última vez */
+  t: string;
 }
 
-export interface Habit {
-  env: string;
-  action: string;
-  /** q · min(1, n/20) */
-  strength: number;
+/** Anillo de experiencias cuantizadas a int8 (entrada + retorno + éxito + recompensa). */
+export interface MemoriasDoc {
+  /** cuántas hay guardadas (≤ tope) */
   n: number;
-  ok: number;
+  /** siguiente posición a sobrescribir */
+  cursor: number;
+  /** Int8Array en base64; vacío si n = 0 */
+  datos: string;
 }
 
-export interface PetStats {
-  ticks: number;
-  steps: number;
-  concepts: number;
-  taughtConcepts: number;
-  forgotten: number;
-  chats: number;
-  teachings: number;
-  llmCalls: number;
-  envSwitches: number;
-  predictions: number;
-  predictionsOk: number;
-  verifications: number;
-  verificationsOk: number;
+// --- lo que pasó en el último tick (para la vista "mente") ---
+
+export interface CandidataRegistro {
+  accion: string;
+  objetivo: string;
+  label: string;
+  /** valor que le dio la red */
+  q: number;
 }
 
-/** Contadores del día (clave de día en America/Lima). */
-export interface DayCounters {
-  key: string;
-  ticks: number;
-  manualTicks: number;
-  llmCalls: number;
-  chats: number;
-  teachings: number;
-  lastManualAt: string | null;
-  /** Día en que se hizo el último barrido completo (decaimiento/poda). */
-  sweptKey: string;
-  /** Si ya se aplicó hoy la penalización de soledad por ausencia del dueño. */
-  absenceApplied: boolean;
+export interface PasoRegistro {
+  accion: string;
+  objetivo: string;
+  label: string;
+  /** recompensa del entorno */
+  r: number;
+  /** recompensa total (entorno + curiosidad) */
+  rTotal: number;
+  /** retorno descontado que se usó para entrenar */
+  g: number;
+  exito: boolean;
+  novedad: number;
+  /** error de predicción del modelo del mundo (0..1) */
+  sorpresa: number;
+  /** P(éxito) que predijo antes de actuar */
+  pExito: number;
+  /** todas las candidatas con su valor (la elegida incluida) */
+  candidatas: CandidataRegistro[];
+  /** símbolo emitido (0..15) o null si calló */
+  simbolo: number | null;
+  tags: string[];
+  ms: number;
 }
 
-export interface TickLock {
-  until: string;
+export interface OidoRegistro {
+  /** símbolos oídos (0..15), con repetición */
+  simbolos: number[];
+  /** de quiénes (cids o "dios") */
+  de: string[];
+}
+
+export interface UltimoTick {
   seq: number;
-  reason: TickReason;
+  at: string;
+  env: string;
+  zona: string;
+  pasos: PasoRegistro[];
+  /** lo que oyó antes de decidir, si algo */
+  oido: OidoRegistro | null;
+  /** recompensa social recibida por sus emisiones del tick anterior */
+  social: number;
+  /** pérdida media de los pasos de gradiente de este tick */
+  perdida: number;
+  /** norma media del gradiente (antes del recorte) */
+  gradiente: number;
+  /** activación de la capa 2 en el último paso (para pintarla) */
+  activacion: number[];
+  temperatura: number;
+  ms: number;
 }
 
-export interface PetDoc {
-  uid: string;
-  name: string;
-  species: "semillita";
-  active: boolean;
+// --- criatura ---
+
+export type CausaMuerte = "vejez" | "hambre" | "fallos" | "dios";
+
+export interface CriaturaStats {
+  ticks: number;
+  pasos: number;
+  comidas: number;
+  fallosGraves: number;
+  emisiones: number;
+  oidas: number;
+  crias: number;
+  mudanzas: number;
+  suenos: number;
+  /** media móvil de la recompensa total por paso */
+  recompensaMedia: number;
+  /** media móvil de la pérdida por paso de gradiente */
+  perdidaMedia: number;
+}
+
+export interface CriaturaDoc {
+  cid: string;
+  nombre: string;
+  /** generación: 0 la fundadora */
+  gen: number;
+  padre: string | null;
   bornAt: string;
-  stage: LifeStage;
-  xp: number;
-  /** Rasgos al nacer (para que el dueño vea cuánto cambió). */
-  genes: Traits;
-  traits: Traits;
+  diedAt: string | null;
+  causaMuerte: CausaMuerte | null;
+  viva: boolean;
+  genes: Genes;
+  rasgos: Traits;
   /** Una foto por día, ≤ 60 (FIFO). */
   traitHistory: Array<{ day: string; traits: Traits }>;
   mood: Mood;
   drives: Drives;
+  /** 0..1: fallos graves acumulados (sana despacio) */
+  dano: number;
+  /** ticks seguidos con energía en cero */
+  hambreTicks: number;
+  edadTicks: number;
+  xp: number;
+  etapa: LifeStage;
   env: string;
-  allowedEnvs: string[];
-  envVisits: Record<string, number>;
-  /** policy[envId][actionType] */
-  policy: Record<string, Record<string, PolicyEntry>>;
-  /** N por entorno (para el bono UCB). */
-  policyN: Record<string, number>;
-  /** skills[actionType] → conteos (competencia beta-binomial). */
+  /** zona dentro del entorno (en el repo: carpeta de primer nivel o "raiz") */
+  zona: string;
+  /** cursor por entorno (rutas visitadas, zona, ensayos) */
+  cursores: Record<string, EnvStateDoc>;
+  /** competencia por tipo de acción (beta-binomial) */
   skills: Record<string, { ok: number; fail: number }>;
-  /** Derivados de la política, ≤ 5. */
-  habits: Habit[];
-  /** 0..1: cuánto confía en lo que le enseña el dueño. */
-  trustOwner: number;
-  stats: PetStats;
-  day: DayCounters;
-  /** Secuencia de ticks: el tick N usa RNG sembrado con (uid, N) → reintentos idempotentes. */
-  tickSeq: number;
-  lock: TickLock | null;
+  /** "objetivo|verbo" → creencia; ≤ tope */
+  creencias: Record<string, Creencia>;
+  memorias: MemoriasDoc;
+  /** emisiones del último tick a la espera de su recompensa social (entrada cuantizada + símbolo) */
+  emisiones: EmisionPendiente[];
+  stats: CriaturaStats;
+  ultimoTick: UltimoTick | null;
+  /** Secuencia de ticks: el tick N usa RNG sembrado con (cid, N) → reintentos idempotentes. */
+  seq: number;
   lastTickAt: string | null;
-  lastSeenAt: string;
-  lastChatAt: string | null;
-  /** Lo que quiere preguntarle al dueño (≤ 140). */
-  pendingQuestion: string | null;
-  /** Último cerebro usado: "gemini" | "simple" | "custom" | "gemini→simple"… */
-  brainId: string;
-  /** Novedad media de los últimos 3 ticks (para el aburrimiento y el cambio de entorno). */
-  recentNovelty: number[];
+  ticksDesdeCria: number;
+  /** clave de día del último sueño */
+  ultimoSueno: string;
   createdAt: string;
   updatedAt: string;
 }
 
-// --- conocimiento ---
-
-export type ConceptKind =
-  | "cosa"
-  | "lugar"
-  | "idea"
-  | "regla"
-  | "archivo"
-  | "persona"
-  | "habito"
-  | "duda";
-
-export const CONCEPT_KINDS: ConceptKind[] = [
-  "cosa",
-  "lugar",
-  "idea",
-  "regla",
-  "archivo",
-  "persona",
-  "habito",
-  "duda",
-];
-
-export interface ConceptEdge {
-  to: string;
-  rel: string;
-  w: number;
+/** Los pesos de la red, aparte del estado para que la página no los baje. */
+export interface CerebroDoc {
+  cid: string;
+  formato: number;
+  dims: number[];
+  /** Float32Array en base64 (little-endian) */
+  pesos: string;
+  /** pasos de gradiente dados en toda su vida */
+  pasos: number;
+  /** pérdida media reciente */
+  perdida: number;
+  updatedAt: string;
 }
 
-export interface ConceptDoc {
-  /** slug kebab-case ≤ 60 */
-  id: string;
-  label: string;
-  kind: ConceptKind;
-  /** Hecho corto (≤ 160) que la mascota cree. */
-  claim: string;
-  /** 0..1 */
-  confidence: number;
-  hits: number;
-  misses: number;
-  /** { repo: 3, bosque: 1, "dueño": 1 } ≤ 10 claves */
-  sources: Record<string, number>;
-  /** Enseñado por el dueño: piso 0.2, decae a la mitad. */
-  taught: boolean;
-  /** Enseñado y aún sin ponerse a prueba en el entorno. */
-  toTest: boolean;
-  uncertain: boolean;
-  /** Confirmado por el entorno (hipótesis comprobada). */
-  verified: boolean;
-  /** Ruta del repo u objeto imaginado del que trata (para probarlo después). */
-  ref: string | null;
-  /** Texto literal (≤ 40) que debería aparecer en `ref` si el claim es cierto. */
-  evidence: string | null;
-  /** ≤ 12 */
-  edges: ConceptEdge[];
-  firstSeenAt: string;
-  lastSeenAt: string;
-  lastChangeAt: string;
-  lastConfDelta: number;
-  /** confidence · (1 + ln(1 + hits)), materializado para orderBy. */
-  score: number;
-}
+// --- mundo ---
 
-// --- memoria episódica ---
-
-export interface MemoryDoc {
-  id: string;
-  at: string;
+export interface FotoCriatura {
+  nombre: string;
+  gen: number;
+  padre: string | null;
   env: string;
-  action: string;
-  target: string;
-  reward: number;
-  success: boolean;
-  novelty: number;
-  /** slugs ≤ 8 */
-  concepts: string[];
-  /** ≤ 300 */
-  text: string;
-  /** 0..1; decae con el tiempo, se borra bajo 0.08 */
-  salience: number;
-  consolidatedInto: string | null;
-  ownerInvolved: boolean;
+  zona: string;
+  energia: number;
+  edad: number;
+  etapa: LifeStage;
+  mood: MoodWord;
+  viva: boolean;
+  /** tono (0..360) derivado de los genes, para el sprite */
+  tono: number;
+  ultimoSimbolo: number | null;
+  simboloAt: string | null;
 }
 
-// --- diario ---
+export interface Senal {
+  /** cid de la emisora o "dios" */
+  de: string;
+  /** 0..15 */
+  sim: number;
+  /** seq del latido en que se emitió */
+  seq: number;
+  dios: boolean;
+}
 
-export type DiaryKind =
+export interface Recurso {
+  comida: number;
+  fuente: { porHora: number; hasta: string } | null;
+}
+
+export interface LatidoLock {
+  until: string;
+  seq: number;
+}
+
+export interface MundoDoc {
+  id: string;
+  latido: {
+    seq: number;
+    lock: LatidoLock | null;
+    lastAt: string | null;
+  };
+  /** contadores del día (clave de día en America/Lima) */
+  dia: {
+    key: string;
+    latidos: number;
+    escrituras: number;
+    lecturas: number;
+  };
+  poblacion: {
+    vivas: number;
+    nacidas: number;
+    muertas: number;
+    generacionMax: number;
+  };
+  /** cid → foto para el terrario (≤ tope) */
+  fotos: Record<string, FotoCriatura>;
+  /** "env/zona" → recurso */
+  recursos: Record<string, Recurso>;
+  /** "env/zona" → señales del último latido */
+  senales: Record<string, Senal[]>;
+  /** cid → recompensa social pendiente */
+  pendientes: Record<string, number>;
+  rotacion: { cursor: number };
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Una emisión esperando su recompensa social: la entrada de la red (int8 base64) y el símbolo elegido. */
+export interface EmisionPendiente {
+  x: string;
+  sim: number;
+}
+
+// --- léxico ---
+
+export interface LexicoDoc {
+  emisiones: number;
+  oidas: number;
+  porSimbolo: number[];
+  /** cuántas veces se oyó cada símbolo (para las fracciones de consecuencia) */
+  oidasPorSimbolo: number[];
+  /** símbolo → clave de contexto → n */
+  contexto: Record<string, Record<string, number>>;
+  totContexto: Record<string, number>;
+  /** símbolo → clave de consecuencia (en quien oye) → n */
+  consecuencia: Record<string, Record<string, number>>;
+  totConsecuencia: Record<string, number>;
+  bigramas: Record<string, number>;
+  resumen: { bitsContexto: number; bitsConsecuencia: number; at: string; emisionesDia: number; diaKey: string };
+  updatedAt: string;
+}
+
+export interface PistaView {
+  clave: string;
+  humano: string;
+  n: number;
+  frac: number;
+  pmi: number;
+}
+
+export interface GlosaView {
+  simbolo: number;
+  silaba: string;
+  n: number;
+  texto: string;
+  contexto: PistaView[];
+  consecuencia: PistaView[];
+}
+
+export interface LexicoView {
+  emisiones: number;
+  oidas: number;
+  emisionesHoy: number;
+  bitsContexto: number;
+  bitsConsecuencia: number;
+  lecturaContexto: string;
+  lecturaConsecuencia: string;
+  glosas: GlosaView[];
+  bigramas: Array<{ bigrama: string; n: number }>;
+  at: string;
+}
+
+// --- narraciones (Gemini le cuenta al dueño; nada vuelve a las criaturas) ---
+
+export interface NarracionDoc {
+  at: string;
+  texto: string;
+  dios: string;
+  modelo: string;
+}
+
+export interface NarracionesDoc {
+  items: NarracionDoc[];
+  diaKey: string;
+  hoy: number;
+  updatedAt: string;
+}
+
+// --- linaje ---
+
+export interface LinajeEntrada {
+  cid: string;
+  nombre: string;
+  padre: string | null;
+  gen: number;
+  nacio: string;
+  murio: string | null;
+  causa: CausaMuerte | null;
+  /** tono del sprite (para el árbol) */
+  tono: number;
+}
+
+export interface LinajeDoc {
+  entradas: LinajeEntrada[];
+  updatedAt: string;
+}
+
+// --- crónica ---
+
+export type EventoTipo =
+  | "genesis"
   | "nacimiento"
-  | "tick"
-  | "charla"
-  | "ensenanza"
-  | "entorno"
-  | "olvido"
+  | "muerte"
+  | "golpe"
+  | "logro"
+  | "mudanza"
   | "etapa"
-  | "cambio";
+  | "sueno"
+  | "senal"
+  | "comida"
+  | "dios"
+  | "latido"
+  | "aviso";
 
-export interface DiaryDelta {
-  /** slugs ≤ 6 */
-  newConcepts: string[];
-  reinforced: number;
-  weakened: number;
-  /** slugs ≤ 4 */
-  forgotten: string[];
-  /** recompensa media del tick */
-  reward: number;
-  /** solo cambios ≥ 0.01 */
-  traitShift: Partial<Traits>;
-  question: string | null;
-  predictions: { made: number; ok: number };
+export interface Evento {
+  at: string;
+  tipo: EventoTipo;
+  cid: string | null;
+  /** ≤ 200, en plantilla (hechos, no voz) */
+  texto: string;
+  datos: Record<string, string | number | boolean>;
 }
 
-export interface DiaryEntryDoc {
-  id: string;
-  at: string;
-  kind: DiaryKind;
-  env: string;
-  /** ≤ 80 */
-  title: string;
-  /** ≤ 600, en su voz */
-  text: string;
-  moodWord: MoodWord;
-  brainId: string;
-  seq: number | null;
-  delta: DiaryDelta;
-}
-
-// --- charlas ---
-
-export interface ChatDoc {
-  id: string;
-  at: string;
-  from: "dueño" | "mascota";
-  /** ≤ 600 */
-  text: string;
-  kind: "charla" | "ensenanza";
-  usedConcepts: string[];
-  learned: string[];
-  moodWord: MoodWord | null;
+export interface CronicaDoc {
+  key: string;
+  eventos: Evento[];
+  /** eventos que no cupieron en el tope del día */
+  omitidos: number;
 }
 
 // --- entornos ---
@@ -326,7 +454,7 @@ export interface RepoCursor {
   kind: "repo";
   /** ruta → veces leída (≤ 400) */
   visited: Record<string, number>;
-  /** rutas candidatas ≤ 50 (imports resueltos, hijos de carpetas exploradas, pistas del dueño) */
+  /** rutas candidatas ≤ 50 (imports resueltos, hijos de carpetas exploradas) */
   frontier: string[];
   lastRead: { path: string; imports: string[] } | null;
   lastCommitSha: string | null;
@@ -375,44 +503,6 @@ export interface RepoTreeCache {
   lastAttemptAt?: string;
 }
 
-export interface UsageDoc {
-  day: string;
-  calls: number;
-}
-
-// --- log de ticks (también dataset para entrenar un cerebro propio) ---
-
-export interface TickStep {
-  action: string;
-  target: string;
-  label: string;
-  reward: number;
-  rTotal: number;
-  success: boolean;
-  novelty: number;
-  ms: number;
-  tags: string[];
-}
-
-export interface TickDoc {
-  id: string;
-  seq: number;
-  at: string;
-  reason: TickReason;
-  env: string;
-  steps: TickStep[];
-  llmCalls: number;
-  fetches: number;
-  ms: number;
-  brainId: string;
-  error: string | null;
-  /** Pares entrada→salida del cerebro (recortados) — el dataset del modelo propio. */
-  io: {
-    perceive: { input: string; output: string } | null;
-    reflect: { input: string; output: string } | null;
-  };
-}
-
 // --- vistas (lo que viaja al cliente) ---
 
 export interface EnvInfo {
@@ -421,176 +511,104 @@ export interface EnvInfo {
   emoji: string;
   kind: "real" | "imaginado";
   intro: string;
+  zonas: Array<{ id: string; name: string }>;
 }
 
-export interface PetView {
-  name: string;
-  species: string;
-  stage: LifeStage;
-  xp: number;
-  /** xp necesario para la siguiente etapa (null si es sabia). */
-  xpNext: number | null;
-  ageDays: number;
+export interface CreenciaView {
+  clave: string;
+  objetivo: string;
+  verbo: string;
+  q: number;
+  n: number;
+}
+
+export interface CriaturaView {
+  cid: string;
+  nombre: string;
+  gen: number;
+  padre: string | null;
+  viva: boolean;
+  causaMuerte: CausaMuerte | null;
   bornAt: string;
-  traits: Traits;
-  genes: Traits;
+  diedAt: string | null;
+  etapa: LifeStage;
+  xp: number;
+  xpNext: number | null;
+  edadTicks: number;
+  edadDias: number;
+  genes: Genes;
+  rasgos: Traits;
   traitDelta7d: Partial<Traits>;
   mood: Mood;
   drives: Drives;
+  dano: number;
   env: string;
-  allowedEnvs: string[];
-  envVisits: Record<string, number>;
-  habits: Habit[];
-  /** actionType → competencia 0..1 (con conteos) */
+  zona: string;
+  tono: number;
   skills: Array<{ action: string; competence: number; ok: number; fail: number }>;
-  /** env → top acciones por q */
-  preferences: Record<string, Array<{ action: string; q: number; n: number }>>;
-  stats: PetStats;
-  trustOwner: number;
-  pendingQuestion: string | null;
+  /** top por n·|q| */
+  creencias: CreenciaView[];
+  stats: CriaturaStats;
+  ultimoTick: UltimoTick | null;
   lastTickAt: string | null;
-  lastSeenAt: string;
-  brainId: string;
-  /** true si hay un tick en curso ahora mismo */
-  busy: boolean;
+  memorias: number;
+  parametros: number;
 }
 
-export interface ConceptView {
-  id: string;
-  label: string;
-  kind: ConceptKind;
-  claim: string;
-  confidence: number;
-  hits: number;
-  misses: number;
-  sources: string[];
-  taught: boolean;
-  toTest: boolean;
-  uncertain: boolean;
-  verified: boolean;
-  ref: string | null;
-  related: string[];
-  lastSeenAt: string;
-  lastConfDelta: number;
+export interface LimitesView {
+  maxVivas: number;
+  ticksPorLatido: number;
+  pasosPorTick: number;
+  fetchesPorLatido: number;
+  escriturasDia: number;
+  lecturasDia: number;
+  fraccionSegura: number;
+  latidosDia: number;
+  cronicaPorDia: number;
+  creencias: number;
+  memorias: number;
+  simbolos: number;
+  parametros: number;
 }
 
-export interface MemoryView {
-  id: string;
-  at: string;
-  env: string;
-  action: string;
-  target: string;
-  text: string;
-  reward: number;
-  salience: number;
-  concepts: string[];
+export interface PresupuestoView {
+  topeSeguro: number;
+  proyeccionManana: number;
+  proyeccionConUnaMas: number;
+  lecturasManana: number;
+  cabeOtra: boolean;
+  motivo: string | null;
+  ahorro: boolean;
 }
 
-export interface DiaryEntryView {
-  id: string;
-  at: string;
-  kind: DiaryKind;
-  env: string;
-  title: string;
-  text: string;
-  moodWord: MoodWord;
-  brainId: string;
-  delta: DiaryDelta;
-}
-
-export interface ChatView {
-  id: string;
-  at: string;
-  from: "dueño" | "mascota";
-  text: string;
-  kind: "charla" | "ensenanza";
-  usedConcepts: string[];
-  learned: string[];
-  moodWord: MoodWord | null;
-}
-
-/** "Mientras no estabas": agregado en servidor a partir de los deltas guardados. */
-export interface ReportView {
-  since: string;
-  days: number;
-  ticks: number;
-  newConcepts: string[];
-  reinforced: number;
-  weakened: number;
-  forgotten: string[];
-  /** cambios de rasgos acumulados (solo |Δ| ≥ 0.01) */
-  traitShift: Partial<Traits>;
-  /** frases cortas: "más cautelosa", "menos curiosa" */
-  traitWords: string[];
-  predictions: { made: number; ok: number };
-  question: string | null;
-  entries: DiaryEntryView[];
-}
-
-export interface CapsView {
-  ticksLeft: number;
-  chatsLeft: number;
-  teachLeft: number;
-  /** ISO de cuándo puede volver a explorar a mano (null = ya) */
-  manualReadyAt: string | null;
-}
-
-export interface StateResponse {
-  pet: PetView | null;
+export interface MundoView {
+  /** false si la colonia no existe todavía */
+  hay: boolean;
+  latido: { seq: number; lastAt: string | null; ocupado: boolean; retryAt: string | null };
+  dia: MundoDoc["dia"];
+  poblacion: MundoDoc["poblacion"];
+  fotos: Record<string, FotoCriatura>;
+  recursos: Record<string, Recurso>;
+  limites: LimitesView;
+  presupuesto: PresupuestoView;
   envs: EnvInfo[];
-  report: ReportView | null;
-  knowledge: ConceptView[];
-  fading: ConceptView[];
-  memories: MemoryView[];
-  chat: ChatView[];
-  diary: DiaryEntryView[];
-  /** exploraciones atrasadas que la UI debe disparar (≤ 2) */
-  owed: number;
-  caps: CapsView;
-  brainId: string;
-  /** nombres sugeridos cuando aún no hay mascota */
-  names: string[];
+  criaturas: CriaturaView[];
+  /** eventos de hoy (los últimos primero) */
+  cronica: Evento[];
+  /** latidos atrasados que la página debería disparar (0 o 1) */
+  atrasado: boolean;
 }
 
-export interface StepView {
-  action: string;
-  target: string;
-  label: string;
-  reward: number;
-  success: boolean;
-  novelty: number;
-  tags: string[];
-}
+export type LatidoReason = "cron" | "manual" | "catchup";
 
-export type TickSkipReason = "locked" | "cap" | "cooldown" | "nopet" | "inactive" | "error";
-
-export interface TickResult {
-  skipped: TickSkipReason | null;
-  seq: number | null;
-  entry: DiaryEntryView | null;
-  extraEntries: DiaryEntryView[];
-  steps: StepView[];
-  llmCalls: number;
-  ms: number;
-  brainId: string;
-  pet: PetView | null;
-  /** ISO para reintentar si skipped = cooldown/locked */
+export interface LatidoResult {
+  skipped: "locked" | "sinColonia" | null;
   retryAt: string | null;
-}
-
-export interface ChatResponse {
-  reply: string;
-  usedConcepts: string[];
-  learned: ConceptView[];
-  moodWord: MoodWord;
-  question: string | null;
-  pet: PetView;
-}
-
-export interface TeachResponse {
-  ack: string;
-  concepts: ConceptView[];
-  /** Si algo de lo enseñado choca con lo que ya vio: "Pero yo vi que…" */
-  contradiction: { conceptId: string; label: string; why: string } | null;
-  pet: PetView;
+  seq: number | null;
+  procesadas: string[];
+  saltadas: Array<{ cid: string; why: string }>;
+  nacidas: string[];
+  muertas: string[];
+  eventos: Evento[];
+  ms: number;
 }

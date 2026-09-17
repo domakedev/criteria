@@ -1,8 +1,7 @@
-// Configuración y constantes de calibración de la mascotita, en UN solo lugar.
-// Los topes vienen de variables de entorno (con defaults pensados para el plan
-// Hobby de Vercel + Firestore + Gemini Flash); las constantes de aprendizaje
-// (α, κ, η, λ…) viven aquí para poder recalibrarlas tras unas semanas mirando
-// traitHistory sin tocar la lógica.
+// Configuración y constantes de calibración de la sociedad, en UN solo lugar.
+// Las variables de entorno se leen en cada llamada (no al importar) para que
+// las pruebas y Vercel puedan variarlas. Todo tope que limita la población o
+// el presupuesto está en LIMITES y viaja a la UI tal cual.
 
 function num(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -18,176 +17,234 @@ function list(name: string): string[] {
     .filter(Boolean);
 }
 
-export type BrainMode = "gemini" | "simple" | "custom";
+export type Nacimiento = "junto-a-madre" | "aleatorio";
 
-/** Se lee en cada llamada (no al importar) para que los tests y Vercel puedan variar el entorno. */
 export function cfg() {
-  const modeRaw = (process.env.MASCOTITA_BRAIN ?? "").trim().toLowerCase();
-  const brainMode: BrainMode =
-    modeRaw === "custom" || modeRaw === "simple" || modeRaw === "gemini"
-      ? modeRaw
-      : process.env.GEMINI_API_KEY
-        ? "gemini"
-        : "simple";
+  const nacRaw = (process.env.MASCOTITA_NACIMIENTO ?? "").trim();
+  const nacimiento: Nacimiento = nacRaw === "aleatorio" ? "aleatorio" : "junto-a-madre";
   return {
-    /** uids o correos verificados con permiso; vacío = cualquier usuario con sesión. */
+    /** uids o correos verificados con permiso (los dioses); vacío = cualquier usuario con sesión. */
     owners: list("MASCOTITA_OWNERS"),
-    brainMode,
-    brainUrl: (process.env.MASCOTITA_BRAIN_URL ?? "").trim(),
-    brainToken: (process.env.MASCOTITA_BRAIN_TOKEN ?? "").trim(),
+    /** id de la colonia (una por despliegue) */
+    colonia: (process.env.MASCOTITA_COLONIA ?? "principal").trim() || "principal",
     repo: (process.env.MASCOTITA_REPO ?? "domakedev/criteria").trim(),
     repoBranch: (process.env.MASCOTITA_REPO_BRANCH ?? "main").trim(),
     githubToken: (process.env.GITHUB_TOKEN ?? "").trim(),
     cronSecret: process.env.CRON_SECRET ?? "",
-    /** ticks por mascota y día (cron + catch-up + manual) */
-    maxTicksDay: num("MASCOTITA_MAX_TICKS_DAY", 6),
-    /** ticks manuales ("Explorar ahora") por día */
-    maxManualTicksDay: num("MASCOTITA_MAX_MANUAL_TICKS_DAY", 4),
-    /** llamadas LLM por mascota y día (ticks + charlas + enseñanzas) */
-    maxLlmDay: num("MASCOTITA_MAX_LLM_DAY", 40),
-    /** llamadas LLM por día sumando TODAS las mascotas (protege la key) */
-    maxLlmGlobalDay: num("MASCOTITA_MAX_LLM_GLOBAL_DAY", 150),
-    maxChatsDay: num("MASCOTITA_MAX_CHATS_DAY", 30),
-    maxTeachDay: num("MASCOTITA_MAX_TEACH_DAY", 10),
-    /** minutos entre dos "Explorar ahora" */
-    manualCooldownMin: num("MASCOTITA_MANUAL_COOLDOWN_MIN", 10),
+    nacimiento,
+    /** tope de vivas (se puede bajar por env sin tocar código) */
+    maxVivas: Math.max(1, Math.min(LIMITES.maxVivas, num("MASCOTITA_MAX_VIVAS", LIMITES.maxVivas))),
   };
 }
 
-/** Presupuestos de tiempo y tamaño por tick. */
-export const BOUNDS = {
-  /** duración total objetivo de un tick (ms); maxDuration de la ruta es 60 s */
-  tickMs: 40_000,
-  /** el episodio (acciones + fetches) se corta aquí */
-  episodeMs: 18_000,
-  /** no se llama al LLM para reflexionar si queda menos que esto */
-  reflectMinRemainingMs: 9_000,
-  llmTimeoutMs: 12_000,
-  fetchTimeoutMs: 5_000,
-  fetchesPerTick: 4,
-  llmCallsPerTick: 2,
-  /** candado del tick (ms) — debe superar tickMs */
-  lockMs: 55_000,
-  /** exploraciones atrasadas máximas al abrir la página */
-  maxOwed: 2,
-  /** horas por exploración atrasada */
-  owedHours: 20,
-  /** el cron no repite si ya hubo tick hace menos de estas horas */
-  cronMinHours: 6,
-  observationChars: 2500,
-  observationsPerTick: 3,
-  hintsPerObservation: 12,
-  knownLabelsForPerceive: 40,
-  beliefsForReflect: 25,
-  beliefsForReflectSabia: 40,
-  chatHistoryTurns: 8,
-  chatMaxChars: 500,
-  teachMaxChars: 300,
-  nameMaxChars: 30,
-  ioLogChars: 6000,
+/** Topes duros de la sociedad y del presupuesto gratis. Visibles en la UI. */
+export const LIMITES = {
+  /** criaturas vivas a la vez */
+  maxVivas: 12,
+  /** criaturas que tickean por latido (round-robin si hay más vivas) */
+  ticksPorLatido: 12,
+  /** acciones por tick (las etapas tempranas dan menos) */
+  pasosPorTick: 3,
+  /** fetches al repositorio por latido, repartidos entre las que están ahí */
+  fetchesPorLatido: 6,
+  fetchTimeoutMs: 4_000,
+  /** plazo total de un latido (maxDuration de la ruta es 60 s) */
+  latidoMs: 50_000,
+  /** plazo por criatura dentro del latido */
+  tickMs: 8_000,
+  /** candado del latido (ms) — debe superar latidoMs */
+  lockMs: 58_000,
+  /** latidos esperados por día (uno cada 15 min) */
+  latidosDia: 96,
+  /** si el último latido tiene más de esto, la página dispara uno (catch-up) */
+  atrasoMin: 25,
+  /** topes gratis de Firestore por día */
+  escriturasDia: 20_000,
+  lecturasDia: 50_000,
+  /** fracción del tope que nos permitimos proyectar */
+  fraccionSegura: 0.6,
+  /** al pasar esta fracción del tope real del día, modo ahorro (mitad de ticks) */
+  fraccionAhorro: 0.9,
+  cronicaPorDia: 400,
+  /** eventos que se devuelven a la página */
+  cronicaVista: 80,
+  creencias: 120,
+  memorias: 150,
+  simbolos: 16,
+  /** fotos de criaturas en el mundo (vivas + muertas recientes) */
+  fotos: 40,
+  /** entradas del árbol genealógico */
+  linaje: 600,
+  traitHistory: 60,
+  /** tamaño máximo esperado de un doc de criatura (para la prueba de humo) */
+  docKb: 200,
 } as const;
 
-/** Topes de tamaño de las colecciones. */
+/** Arquitectura y entrenamiento de la red. Cambiar `entrada` u `oculta*` cambia `formato`. */
+export const RED = {
+  formato: 1,
+  entrada: 96,
+  oculta1: 48,
+  oculta2: 24,
+  salidaQ: 1,
+  salidaMundo: 2,
+  /** 16 símbolos + silencio */
+  salidaSimbolos: 17,
+  /** descuento del retorno dentro del tick */
+  gamma: 0.6,
+  /** recorte del gradiente por norma */
+  clipNorm: 1,
+  huberDelta: 1,
+  /** peso de la sorpresa (error de predicción) en la recompensa total */
+  curiosidadPeso: 0.5,
+  /** replay nocturno */
+  suenoMuestra: 60,
+  suenoPasadas: 2,
+  suenoLrFactor: 0.5,
+  /** hora (Lima) del latido que incluye el sueño */
+  horaSueno: 3,
+  /** rangos de los genes del cerebro */
+  lr: [0.003, 0.03] as const,
+  tau: [0.15, 0.6] as const,
+  sigma: [0.005, 0.05] as const,
+  vida: [900, 1500] as const,
+  /** fracción de pesos que se reinicializan al heredar */
+  reinicioHeredado: 0.03,
+  /** mutación de los rasgos de nacimiento (desviación) */
+  mutacionRasgos: 0.05,
+  /** costo de energía por símbolo emitido */
+  costoEmitir: 0.005,
+  /** costo en unidades de recompensa que la cabeza de símbolos paga por emitir sin que sirva */
+  costoEmitirValor: 0.1,
+  /** temperatura de la cabeza de símbolos = temperatura de acción × esto (más decidida) */
+  tauSimbolos: 0.5,
+  /** peso de la ventaja de la oyente en la recompensa social de la emisora */
+  beta: 0.8,
+  bonoOyente: 0,
+  /** creencias: α mínimo de la media incremental */
+  creenciaAlphaMin: 0.1,
+  /** creencias heredadas por la cría (las más firmes) */
+  creenciasHeredadas: 12,
+} as const;
+
+/** Reglas de la sociedad: comida, reproducción y muerte. */
+export const SOCIEDAD = {
+  /** ticks de edad para poder reproducirse (≈ 2 días) */
+  madurezTicks: 200,
+  energiaParaCria: 0.75,
+  /** unidades de comida en la zona que consume el nacimiento */
+  comidaParaCria: 2,
+  ticksEntreCrias: 150,
+  /** energía con la que nace la cría y la que pierde la madre */
+  energiaCria: 0.5,
+  costoCria: 0.4,
+  /** ticks seguidos con energía en cero para morir de hambre (6 h) */
+  hambreMuerteTicks: 24,
+  danoMuerte: 1,
+  /** comer una unidad */
+  comidaEnergia: 0.35,
+  comidaRecompensa: 0.3,
+  /** en el repo, leer algo nuevo alimenta */
+  novedadRepoEnergia: 0.15,
+  /** tope de comida acumulada por zona (natural + fuentes) */
+  comidaTope: 6,
+  /** tope de unidades que el dios deja de una vez */
+  comidaDiosMax: 20,
+  fuenteMaxPorHora: 2,
+  fuenteMaxHoras: 168,
+} as const;
+
+/** Regeneración natural de comida (unidades por hora) por "env/zona". */
+export const RECURSOS_NATURALES: Record<string, number> = {
+  "bosque/arroyo": 0.5,
+  "bosque/claro": 0.3,
+  "ciudad/mercado": 0.5,
+  "ciudad/plaza": 0.2,
+  "cine/lobby": 0.2,
+};
+
+/** El canal de símbolos y el intérprete. Las sílabas son etiquetas para mostrar; nadie les asigna significado. */
+export const LENGUAJE = {
+  silabas: ["ka", "ti", "mo", "su", "ra", "ne", "pi", "lo", "wa", "ki", "ta", "chu", "yu", "mi", "ño", "sa"],
+  /** señales que se conservan por zona */
+  senalesPorZona: 8,
+  /** símbolos por emisión del dios */
+  maxDios: 3,
+  /** recorte de la ventaja de la oyente */
+  ventajaMax: 0.3,
+  /** ventaja mínima para anotarla en la crónica */
+  ventajaCronica: 0.15,
+  /** una pista entra en la glosa si acompaña al menos esta fracción de las emisiones del símbolo */
+  minFraccionPista: 0.15,
+  minPmiPista: 0.3,
+  clavesPorSimbolo: 60,
+  /** emisiones mínimas para intentar una glosa */
+  minGlosa: 20,
+  /** conteo mínimo de una pista para entrar en la glosa */
+  minPista: 5,
+} as const;
+
+/** El narrador (Gemini, solo para el dueño, solo lectura). */
+export const NARRADOR = {
+  porDia: 10,
+  guardadas: 20,
+  maxChars: 24_000,
+} as const;
+
+/** Presupuestos de tiempo y tamaño por tick. */
+export const BOUNDS = {
+  fetchTimeoutMs: LIMITES.fetchTimeoutMs,
+  observationChars: 2500,
+  hintsPerObservation: 12,
+  nameMaxChars: 30,
+  eventoChars: 200,
+} as const;
+
+/** Topes de tamaño de las estructuras del entorno. */
 export const CAPS = {
-  concepts: 400,
-  taughtConcepts: 80,
-  memories: 300,
-  chats: 240,
-  ticks: 60,
-  traitHistory: 60,
-  edgesPerConcept: 12,
-  sourcesPerConcept: 10,
+  traitHistory: LIMITES.traitHistory,
   frontier: 50,
   visited: 400,
   fileSha: 200,
   repoTree: 800,
   repoFileBytes: 40_000,
-  habits: 5,
 } as const;
 
-/** Constantes de aprendizaje. Ver cognition.ts para las fórmulas. */
+/** Constantes de aprendizaje del cuerpo (ánimo, impulsos, rasgos, etapas). */
 export const CAL = {
-  // política (bandit contextual por entorno)
-  alphaMin: 0.08,
-  alphaBase: 0.35,
-  alphaDecay: 0.02,
-  ucbBase: 0.3,
-  ucbCuriosity: 0.7,
-  noveltyWeight: 0.6,
-  riskWeight: 0.8,
-  boredomWeight: 0.4,
-  energyCostWeight: 1.0,
-  restWeight: 0.5,
-  habitBias: 0.15,
-  ludicWeight: 0.3,
-  tempBase: 0.25,
-  tempCuriosity: 0.5,
-  maturityTicks: 150,
-  intrinsicWeight: 0.5,
-  // conocimiento
-  conf0Repo: 0.35,
-  conf0Imagined: 0.3,
-  conf0Taught: 0.6,
-  conf0Chat: 0.45,
-  conf0Rule: 0.4,
-  conf0Habit: 0.5,
-  reinforceEta: 0.15,
-  crossSourceBoost: 1.3,
-  repeatDamp: 0.6,
-  confirmGain: 0.1,
-  verifyGain: 0.2,
-  contradictFactor: 0.75,
-  refuteFactor: 0.6,
-  recallGain: 0.05,
-  decayLambda: 0.06,
-  taughtFloor: 0.2,
-  pruneConf: 0.18,
-  pruneMinAgeDays: 7,
-  edgeGain: 0.2,
-  edgeDecay: 0.98,
-  edgeCut: 0.05,
-  // memorias
-  salienceBase: 0.25,
-  salienceReward: 0.5,
-  salienceNovelty: 0.5,
-  salienceOwner: 0.3,
-  memoryLambda: { huevo: 0.25, cria: 0.25, joven: 0.15, adulta: 0.1, sabia: 0.08 } as Record<string, number>,
-  memoryForget: 0.08,
-  consolidateMin: 3,
-  consolidateReward: 0.2,
   // ánimo e impulsos
   moodInertia: 0.6,
   arousalInertia: 0.5,
   moodHalfLifeHours: 24,
-  energyPerHour: 0.15,
-  energyPerStep: 0.15,
+  /** energía que recupera por hora sin hacer nada (casi nada: la comida es lo que alimenta) */
+  energyPerHour: 0.02,
   energyRisky: 0.3,
-  energyRest: 0.4,
+  /** lo que da descansar */
+  energyRest: 0.05,
+  /** factor sobre los costos de energía de las acciones (96 ticks/día; sin esto se morirían en horas) */
+  energiaEscala: 0.12,
+  /** compañía en la zona: cuánto baja la soledad por tick */
+  soledadCompania: 0.1,
   boredomPerHour: 0.04,
   boredomNoveltyRelief: 0.5,
   lonelinessPerHour: 0.03,
-  lonelinessChatRelief: 0.6,
+  /** daño por fallo grave y cuánto sana por tick */
+  danoPorFallo: 0.15,
+  danoSanaPorTick: 0.01,
+  /** recompensa ≤ esto = fallo grave */
+  falloGrave: -0.6,
   // deriva de rasgos
   kappa: { huevo: 0.06, cria: 0.06, joven: 0.04, adulta: 0.02, sabia: 0.01 } as Record<string, number>,
   traitMin: 0.05,
   traitMax: 0.95,
-  absencePenaltyPerDay: 0.2,
-  absencePenaltyMax: 0.6,
-  absenceGraceDays: 2,
   // etapas (por xp)
   xpCria: 25,
   xpJoven: 120,
   xpAdulta: 400,
   stepsPerStage: { huevo: 1, cria: 2, joven: 3, adulta: 3, sabia: 3 } as Record<string, number>,
-  // cambio de entorno por aburrimiento
-  boredomSwitch: 0.8,
-  switchProb: 0.2,
-  noveltyExhausted: 0.15,
-  // dueño
-  trustInit: 0.7,
-  trustGain: 0.02,
-  trustLoss: 0.05,
-  // predicciones en mundos imaginados
-  predictionBonus: 0.1,
-  predictionMinTries: 2,
+  /** ticks hasta que la temperatura llega a su mínimo */
+  maturityTicks: 300,
+  /** mudarse de entorno: costo de energía y recompensa inmediata (el viaje cansa) */
+  mudanzaCosto: 0.15,
+  mudanzaRecompensa: -0.1,
 } as const;

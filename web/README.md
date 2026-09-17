@@ -102,109 +102,123 @@ O en la configuración de Claude Desktop (u otro cliente MCP por HTTP):
 El token se puede regenerar o revocar en cualquier momento desde la misma
 pestaña; al hacerlo, el anterior deja de funcionar al instante.
 
-## Mascotita (experimento en `/mascotita`)
+## Mascotitas (la colonia, en `/mascotita`)
 
-Una criatura que **vive en el repositorio** y aprende sola, día a día, por
-ensayo y error — inspirada en los *Thronglets* de Black Mirror, pero criada
-por ti. Es un experimento personal: no aparece en la navegación de la app;
-se entra por la URL `/mascotita` con la misma sesión de criteria.
+Una **sociedad de criaturas con cerebro propio** que vive en este repositorio
+y en tres mundos imaginados. Es un experimento personal, no aparece en la
+navegación general: se entra por `/mascotita` con la misma sesión de criteria
+y solo para quienes estén en `MASCOTITA_OWNERS` (los "dioses"). El diseño
+completo, con lo que es aprendizaje real y lo que no, está en
+`lib/mascotita/PLAN.md`.
 
-**Qué hace.** Cada "tick" (una vez al día por cron, al abrir la página si
-lleva tiempo dormida, o a mano con *Explorar ahora*) elige un entorno, actúa
-2-3 veces, percibe lo que vio, reflexiona y escribe su diario. El entorno
-real es este repo (lee archivos de GitHub, sigue imports que a veces no
-resuelven, nota commits nuevos, comprueba hipótesis contra el código); los
-imaginados (bosque, ciudad, cine) son mundos definidos como datos en
-`lib/mascotita/envs/data.ts` con reacciones ocultas que solo descubre
-probando. Al volver, la página muestra **"Mientras no estabas"**: qué aprendió,
-qué olvidó, cómo cambió su personalidad — calculado a partir de los números
-guardados, no narrado de memoria.
+**Cero IA externa en las criaturas.** Cada una tiene su propia red neuronal
+(96 → 48 → 24, tres cabezas: valor de la acción, modelo del mundo y símbolos;
+≈ 6 300 parámetros) escrita a mano en TypeScript en `lib/mascotita/nn.ts`,
+con backprop y SGD propios. Elige qué hacer puntuando las acciones que el
+entorno le ofrece, aprende un paso de gradiente por experiencia, guarda un
+anillo de memorias y sueña (replay) una vez al día. Ve el mundo como señales
+crudas (hashing de tokens de rutas, objetos, zonas y verbos: `senales.ts`),
+nunca como etiquetas. Sus creencias son una tabla (objetivo, verbo) → valor y
+veces, hecha solo de lo que vivió. Los pesos van a Firestore en base64
+(≈ 33 KB por criatura). Gemini no interviene: como mucho, en la fase final,
+te resume a ti lo que pasó (solo lectura).
 
-**Cómo aprende de verdad.** Su "yo" son números en Firestore, no un prompt:
-una política por entorno (bandit con exploración UCB y softmax cuya
-temperatura baja con la madurez), habilidades con conteos, un grafo de
-conceptos con confianza que se refuerza, se contradice y decae (repetición
-espaciada), memorias con saliencia que se consolidan en hábitos o se olvidan,
-seis rasgos de personalidad que derivan con lo que vive, ánimo e impulsos
-(energía, aburrimiento, soledad), y etapas de vida por experiencia. La IA
-(Gemini) es solo un órgano de **percepción** (texto → conceptos) y de
-**lenguaje** (diario, charla): nunca decide acciones ni escribe estado.
+**El latido.** La colonia vive 24 horas: `.github/workflows/latido.yml`
+llama a `/api/mascotita/cron` cada 15 minutos con `Authorization: Bearer
+$CRON_SECRET`. Cada latido toma el candado del mundo, tickea a las vivas en
+round-robin (≤ 12 por latido, con plazo por criatura y ≤ 6 fetches al repo
+repartidos), guarda cada una apenas termina y al final el mundo y la crónica.
+La página dispara un latido al abrirse si el último tiene más de 25 min
+(catch-up) y, con **Vigilia** encendida (el botón de la cabecera, por
+defecto sí), sigue latiendo cada 15 min mientras la pestaña esté abierta:
+sirve para vivir sin configurar la Action. `vercel.json` conserva un cron
+diario de respaldo. Sin Action y sin pestaña abierta, la colonia solo late
+una vez al día.
 
-**Cambiar de cerebro.** `lib/mascotita/brain/index.ts` define la interfaz
-`Brain` (`perceive` / `reflect` / `speak`, JSON validado). `MASCOTITA_BRAIN`
-elige: `gemini` (default con `GEMINI_API_KEY`), `simple` (determinista, sin
-IA — la mascota vive igual, con menos voz) o `custom` (tu propio modelo
-detrás de `MASCOTITA_BRAIN_URL`, mismo contrato). Los pares entrada→salida de
-cada tick quedan en `mascotas/{uid}/ticks/*` como dataset para entrenarlo.
+**El terrario.** `/mascotita` es un mapa de tiles (canvas, todo procedural,
+estética de consola de 16 bits) con cuatro regiones: bosque, ciudad, cine y
+el repositorio. Las criaturas caminan entre zonas, muestran una burbuja con
+la sílaba que acaban de emitir, comen los puntos ámbar y se multiplican a la
+vista. Alrededor: la crónica, la mente de la criatura tocada (cada candidata
+con el valor que le dio su red y cuál eligió), el léxico del intérprete
+(glosas con n y PMI, medidores de bits), el árbol genealógico, el panel del
+dios (comida, fuentes, teclado de símbolos), los límites y el narrador
+(Gemini le cuenta al dueño qué pasó; nada vuelve a las criaturas).
 
-**Desplegar.** En Vercel agrega `MASCOTITA_OWNERS` (tu correo o uid — si no,
-cualquier usuario con sesión puede criar una), `CRON_SECRET` (cualquier
-cadena larga) y, recomendado, `GITHUB_TOKEN` (un token de solo lectura: sin
-él GitHub limita a 60 peticiones/hora por IP compartida y el árbol del repo
-falla seguido — la mascota sigue viva con rutas semilla, pero ve menos);
-`web/vercel.json` ya declara el cron diario (`09:00 UTC` = 04:00 en Lima). El plan Hobby permite un cron al día, suficiente: el resto lo
-cubre el catch-up al abrir la página. Topes por día (ticks, llamadas a la IA,
-charlas) en `.env.local.example`; sin cambiar nada, el peor caso ronda
-~60k tokens/día de Gemini Flash.
+**Presupuesto gratis.** Firestore cuenta documentos: un latido cuesta
+≈ 2 lecturas y 2 escrituras por criatura más un puñado fijo. Con 12 vivas y
+96 latidos son ≈ 2 700 escrituras/día (14 % del tope gratis). Los contadores
+reales del día viven en el documento del mundo; al 90 % del tope el latido
+entra en modo ahorro (tickea la mitad) y ninguna cría nace si la proyección
+de mañana no cabe (`presupuesto.ts`). Todo tope está en `config.ts` y se
+muestra en la UI.
 
-### Probarla
+### Configurar
 
-**En Vercel (lo normal).** Agrega estas variables y vuelve a desplegar; el
-resto (Firebase, `GEMINI_API_KEY`) ya lo usa el proyecto:
+**En Vercel** (el resto — Firebase, `GEMINI_API_KEY` — ya lo usa el proyecto):
 
 | Variable | Valor | Para qué |
 |---|---|---|
-| `MASCOTITA_OWNERS` | tu correo (o tu uid de Firebase) | Solo tú puedes criarla. Vacío = cualquier usuario con sesión. |
-| `CRON_SECRET` | una cadena larga al azar | Autoriza el cron diario que ya declara `vercel.json`. |
-| `GITHUB_TOKEN` | token de solo lectura (opcional, recomendado) | Sin él GitHub limita a 60 peticiones/hora por IP compartida y la mascota "ve" menos del repo. |
+| `MASCOTITA_OWNERS` | tu correo (o tu uid de Firebase) | Solo los dioses entran. Vacío = cualquier usuario con sesión. |
+| `CRON_SECRET` | una cadena larga al azar | Autoriza el latido (Action y cron de Vercel). |
+| `GITHUB_TOKEN` | token de solo lectura (recomendado) | Sin él GitHub limita a 60 peticiones/hora por IP compartida y las criaturas ven menos del repo. |
 
-El correo funciona si entras con Google (queda verificado); con correo y
-contraseña, usa mejor el **uid** que aparece en Firebase Console →
-Authentication → Users. Luego entra a `/mascotita` — o al menú de tu perfil
-en la app, donde aparece **Mi mascotita** solo si estás en la lista.
+**En GitHub** (Settings → Secrets and variables → Actions):
 
-**En tu máquina, sin crear nada en Firebase.** Con los emuladores basta:
+| Tipo | Nombre | Valor |
+|---|---|---|
+| secret | `CRON_SECRET` | el mismo que en Vercel |
+| variable | `MASCOTITA_URL` | `https://tu-dominio.vercel.app` (sin barra final) |
+
+GitHub retrasa los crons en horas pico y **desactiva los workflows
+programados de un repo público tras 60 días sin commits**: la página avisa
+si el último latido tiene más de 2 h.
+
+### Probarla
+
+**Sin Firestore, en tu máquina** (la prueba de humo, 8 segundos):
 
 ```bash
 cd web
 npm install
+npx -y tsx scripts/humo.ts             # todos los escenarios
+npx -y tsx scripts/humo.ts laboratorio # uno solo: latido | laboratorio | mundo | repo | sociedad
+```
+
+Corre latidos reales sobre un store en memoria y un repo falso: mide que la
+red aprende (deja de comer el hongo malo, prefiere la fruta), que repetir un
+latido es idempotente, que ningún documento tiene NaN ni pesa de más, y
+cuántas lecturas/escrituras cuesta cada día.
+
+**Con los emuladores de Firebase** (igual que el resto de la web):
+
+```bash
+cd web
 npx -y firebase-tools emulators:start --project demo-mascotita   # Auth + Firestore
 ```
 
-y en otra terminal, con un `.env.local` así:
-
-```bash
-NEXT_PUBLIC_FIREBASE_API_KEY=demo-api-key
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=demo-mascotita
-NEXT_PUBLIC_FIREBASE_APP_ID=1:1:web:1
-NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
-FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
-FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
-FIREBASE_SERVICE_ACCOUNT=<json de servicio cualquiera, en base64: los emuladores no lo validan>
-MASCOTITA_BRAIN=simple   # o deja GEMINI_API_KEY para que hable de verdad
-CRON_SECRET=local
-npm run dev              # http://localhost:3000
-```
-
-Crea una cuenta con correo y contraseña (el emulador acepta cualquiera),
-entra a `/mascotita`, ponle nombre y déjala explorar. Para forzar el ciclo
-diario sin esperar: `curl -H "Authorization: Bearer local" http://localhost:3000/api/mascotita/cron`.
+y en otra terminal, con un `.env.local` como el de `.env.local.example`
+(apuntando a los emuladores) y `CRON_SECRET=local`: `npm run dev`, entra a
+`/mascotita`, funda la colonia y pulsa **Latir ahora**. Para forzar un latido
+desde fuera: `curl -H "Authorization: Bearer local" http://localhost:3000/api/mascotita/cron`.
 
 **Añadir un entorno imaginado** = agregar un objeto a `IMAGINED` en
 `lib/mascotita/envs/data.ts` (zonas, objetos, verbos, reacciones con su
-probabilidad oculta). Nada más: aparece en el selector.
+probabilidad oculta) y su id al final de `ENV_ORDEN` en `senales.ts`.
 
 ```
-mascotas/{uid}                     estado numérico (rasgos, política, ánimo, contadores, candado)
-mascotas/{uid}/conocimiento/{slug} conceptos con confianza, fuentes, aristas
-mascotas/{uid}/memorias/{id}       episodios con saliencia (se consolidan o se olvidan)
-mascotas/{uid}/diario/{id}         entradas del diario con su delta numérico
-mascotas/{uid}/charlas/{id}        conversación con el dueño
-mascotas/{uid}/entornos/{envId}    cursor por entorno (rutas visitadas, zona, ensayos)
-mascotas/{uid}/ticks/{seq}         log de cada tick + entradas/salidas del cerebro (dataset)
-mascotita_cache/repoTree           árbol del repo (1 fetch/día, compartido)
-mascotita_cache/usage              llamadas a la IA del día (tope global)
+colonia/principal                     mundo: latido, contadores del día, población, fotos, recursos, señales
+colonia/principal/criaturas/{cid}     estado, genes, rasgos, creencias, memorias, último tick
+colonia/principal/cerebros/{cid}      pesos de la red (base64 float32)
+colonia/principal/cronica/{día}       eventos del día (≤ 400)
+mascotita_cache/repoTree              árbol del repo (1 fetch/día, compartido)
 ```
+
+**Mudarla a tu servidor.** Todo es TypeScript dentro de esta app: basta Node
+≥ 20, `next build && next start`, las mismas variables y algo que llame a
+`/api/mascotita/cron` cada 15 min. Lo único de Vercel es `vercel.json`. La
+base es Firestore; `lib/mascotita/store.ts` es la única interfaz a
+reimplementar si un día la quieres local.
 
 ## Datos
 

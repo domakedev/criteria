@@ -1,0 +1,31 @@
+# El latido de la colonia de mascotitas: cada 15 minutos llama a
+# /api/mascotita/cron con el secreto. Configura en el repo (Settings →
+# Secrets and variables → Actions):
+#   · secret   CRON_SECRET    el mismo valor que en Vercel
+#   · variable MASCOTITA_URL  https://tu-dominio.vercel.app (sin barra final)
+# GitHub retrasa los crons en horas pico y desactiva los workflows programados
+# de un repo público tras 60 días sin commits: la página hace catch-up al
+# abrirse y web/vercel.json conserva un cron diario de respaldo.
+name: latido
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  latir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Llamar al cron de la colonia
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          MASCOTITA_URL: ${{ vars.MASCOTITA_URL }}
+        run: |
+          if [ -z "$CRON_SECRET" ] || [ -z "$MASCOTITA_URL" ]; then
+            echo "Faltan CRON_SECRET (secret) o MASCOTITA_URL (variable)."; exit 1
+          fi
+          curl -sS --fail --max-time 90 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$MASCOTITA_URL/api/mascotita/cron"
