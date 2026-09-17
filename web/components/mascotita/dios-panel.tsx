@@ -96,7 +96,7 @@ export function DiosPanel({
           Elige hasta 3 sílabas. Las criaturas de esa zona las oirán en su siguiente tick, como cualquier otra señal. Lo que pase después queda en el
           léxico: así aprendes tú.
         </p>
-        <div className="mt-2 grid grid-cols-8 gap-1">
+        <div className="mt-2 grid grid-cols-4 gap-1 sm:grid-cols-8">
           {SILABAS.map((s, i) => (
             <button key={s} className="tecla" disabled={sims.length >= 3} onClick={() => setSims((v) => [...v, i])}>
               {s}
