@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/mascotita/cron",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}
