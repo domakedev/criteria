@@ -3,6 +3,7 @@
 // La app, con la mínima carga posible: tres destinos (Inicio, Mis decisiones,
 // Comunidad) y un botón "+" para anotar. Entrenar se abre desde Inicio y
 // "Conectar IA" vive en el menú de perfil — son secundarios, no pestañas.
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { logout, useSession } from "@/components/auth";
@@ -25,6 +26,7 @@ import {
   PlusIcon,
   SearchIcon,
   SparklesIcon,
+  SproutIcon,
   TargetIcon,
   UsersIcon,
 } from "@/components/icons";
@@ -45,6 +47,16 @@ export default function AppPage() {
   const router = useRouter();
   const { user, enabled } = useSession();
   const [tab, setTab] = useState<Tab>("inicio");
+  // La mascotita es un experimento con su propia lista de dueños: el enlace
+  // solo aparece si este usuario puede entrar.
+  const [hasPet, setHasPet] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    api<{ allowed: boolean }>("/api/mascotita/allowed")
+      .then((d) => setHasPet(d.allowed))
+      .catch(() => setHasPet(false));
+  }, [user]);
 
   useEffect(() => {
     if (enabled && user === null) router.replace("/login");
@@ -106,6 +118,7 @@ export default function AppPage() {
               name={name}
               initial={initial}
               onConnectAi={() => setTab("ia")}
+              hasPet={hasPet}
               onLogout={() => logout().then(() => router.replace("/"))}
             />
           </div>
@@ -167,11 +180,13 @@ function ProfileMenu({
   initial,
   onConnectAi,
   onLogout,
+  hasPet,
 }: {
   name: string;
   initial: string;
   onConnectAi: () => void;
   onLogout: () => void;
+  hasPet: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -201,6 +216,16 @@ function ProfileMenu({
               <BoltIcon className="h-4 w-4 text-stone-400" />
               Conectar mi IA
             </button>
+            {hasPet ? (
+              <Link
+                href="/mascotita"
+                onClick={() => setOpen(false)}
+                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-stone-600 transition-colors hover:bg-stone-50 hover:text-stone-900"
+              >
+                <SproutIcon className="h-4 w-4 text-stone-400" />
+                Mi mascotita
+              </Link>
+            ) : null}
             <button
               onClick={onLogout}
               className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-stone-600 transition-colors hover:bg-stone-50 hover:text-stone-900"

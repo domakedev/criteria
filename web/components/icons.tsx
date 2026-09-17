@@ -182,3 +182,14 @@ export function LogoutIcon(p: IconProps) {
     </Svg>
   );
 }
+
+export function SproutIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 20v-7" />
+      <path d="M12 13c0-3-2.2-4.5-5-5 0 3 2.2 4.5 5 5Z" />
+      <path d="M12 13c0-3 2.2-4.5 5-5 0 3-2.2 4.5-5 5Z" />
+      <path d="M8.5 20h7" />
+    </Svg>
+  );
+}
